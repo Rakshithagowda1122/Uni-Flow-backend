@@ -1,434 +1,461 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-
-const PASS_DATA = {
-  student: {
-    tab: "Scholar Ticket",
-    category: "STUDENT GATE ACCESS",
-    seat: "STU-04A",
-    gate: "GATE 3B",
-    zone: "ZONE 1",
-    name: "Rohan Varma",
-    initials: "RV",
-    program: "B.Tech Spacecraft & Robotics",
-    dept: "Dept. of Aerospace Engineering",
-    ticketNo: "UF-TKT-ISRO-994",
-    campus: "UniFlow Central Institute of Technology",
-    email: "rohan.varma@cit.uniflow.ac.in",
-    kpi1: "CGPA: 9.71 / 10",
-    kpi2: "Attendance: 97.4%",
-    barcodeText: "*UF-STU-2026-994*",
-    accent: "from-cyan-400 via-teal-300 to-blue-500",
-    themeColor: "#06b6d4",
-    glow: "rgba(6, 182, 212, 0.4)",
-    badgeBg: "bg-cyan-950/80 text-cyan-300 border-cyan-400/40",
-    targetPath: "/student",
-  },
-  faculty: {
-    tab: "Faculty Ticket",
-    category: "RESEARCH FELLOW PASS",
-    seat: "FAC-01F",
-    gate: "LAB 7A",
-    zone: "ZONE VIP",
-    name: "Prof. Nandita Krishnan",
-    initials: "NK",
-    program: "Director, Center for Neural Systems",
-    dept: "Dept. of Cognitive Robotics",
-    ticketNo: "UF-TKT-NEURO-204",
-    campus: "UniFlow Central Institute of Technology",
-    email: "nandita.k@cit.uniflow.ac.in",
-    kpi1: "Research Citations: 3,120+",
-    kpi2: "Senior Tenured Chair",
-    barcodeText: "*UF-FAC-2026-204*",
-    accent: "from-fuchsia-400 via-purple-400 to-indigo-500",
-    themeColor: "#c084fc",
-    glow: "rgba(192, 132, 252, 0.4)",
-    badgeBg: "bg-purple-950/80 text-purple-300 border-purple-400/40",
-    targetPath: "/faculty",
-  },
-  admin: {
-    tab: "Registrar Ticket",
-    category: "CAMPUS ROOT ACCESS",
-    seat: "ADM-000",
-    gate: "MAIN SENATE",
-    zone: "ALL ACCESS",
-    name: "Dr. K. S. Rajagopalan",
-    initials: "KR",
-    program: "Chief Controller of Admissions",
-    dept: "Office of Academic Governance",
-    ticketNo: "UF-TKT-ROOT-001",
-    campus: "UniFlow Central Institute of Technology",
-    email: "admissions.head@cit.uniflow.ac.in",
-    kpi1: "32 Academic Colleges",
-    kpi2: "Root Level 0 Clearance",
-    barcodeText: "*UF-ROOT-2026-001*",
-    accent: "from-amber-400 via-orange-400 to-rose-500",
-    themeColor: "#fbbf24",
-    glow: "rgba(251, 191, 36, 0.4)",
-    badgeBg: "bg-amber-950/80 text-amber-300 border-amber-400/40",
-    targetPath: "/admin",
-  },
-};
+import { motion, AnimatePresence } from "framer-motion";
 
 export default function Login() {
   const navigate = useNavigate();
-  const [role, setRole] = useState("student");
-  const [passkey, setPasskey] = useState("••••••••••••••••");
-  const [isTorn, setIsTorn] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
 
-  const active = PASS_DATA[role];
+  // State
+  const [selectedRole, setSelectedRole] = useState("admin");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
 
-  // Trigger Ticket Tear Animation & Route Navigation
-  const handleTearTicket = () => {
-    if (isProcessing) return;
-    setIsProcessing(true);
-    setIsTorn(true);
+  // Biometric Laser Scan States
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanStepText, setScanStepText] = useState("");
+  const [scanSuccess, setScanSuccess] = useState(false);
 
-    setTimeout(() => {
-      navigate(active.targetPath);
-    }, 750);
+  // Dynamic user data extraction from email
+  const displayName = email.trim()
+    ? email.split("@")[0].replace(/[\._\-]/g, " ")
+    : "New User";
+
+  const displayInitials =
+    displayName
+      .split(" ")
+      .filter(Boolean)
+      .map((word) => word[0]?.toUpperCase())
+      .join("")
+      .slice(0, 2) || "UF";
+
+  const handleRoleChange = (role) => {
+    setSelectedRole(role);
+    setEmail("");
+    setPassword("");
+    setErrorMessage("");
+    setScanSuccess(false);
   };
 
-  const handleRoleChange = (key) => {
-    setIsTorn(false);
-    setIsProcessing(false);
-    setRole(key);
+  const handleBiometricAuth = async () => {
+    setErrorMessage("");
+    setIsScanning(true);
+    setScanSuccess(false);
+
+    // Multi-phase scanner telemetry feedback
+    setScanStepText("ACQUIRING BIOMETRIC SIGNATURE...");
+
+    setTimeout(() => {
+      setScanStepText("DECRYPTING HARDWARE TOKEN...");
+    }, 600);
+
+    setTimeout(() => {
+      setScanStepText("ACCESS GRANTED. INITIALIZING PORTAL...");
+      setScanSuccess(true);
+    }, 1200);
+
+    // Complete scan and transition to the next step (/admin)
+    setTimeout(async () => {
+      try {
+        const response = await fetch("http://localhost:8000/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password, role: selectedRole }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          localStorage.setItem("token", data.access_token || data.token);
+          localStorage.setItem(
+            "user",
+            JSON.stringify(data.user || { email, role: selectedRole }),
+          );
+        }
+      } catch (err) {
+        console.warn("Backend offline or bypass navigation:", err.message);
+      } finally {
+        setIsScanning(false);
+        // Direct route matching App.jsx routes:
+        if (selectedRole === "admin") navigate("/admin");
+        else if (selectedRole === "faculty") navigate("/faculty");
+        else if (selectedRole === "student") navigate("/student");
+        else navigate("/admin");
+      }
+    }, 1800);
+  };
+
+  // Trigger login immediately when Enter key is pressed in any input
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" && !isScanning) {
+      e.preventDefault();
+      handleBiometricAuth();
+    }
   };
 
   return (
-    <div className="relative min-h-screen w-full flex flex-col justify-between overflow-hidden bg-[#050711] text-slate-100 select-none px-4 sm:px-8 py-6">
-      {/* Background Animated Atmosphere */}
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div
-          className="absolute -top-36 left-1/4 w-[38rem] h-[38rem] rounded-full blur-[150px] transition-all duration-700 opacity-25"
-          style={{ background: active.themeColor }}
-        />
-        <div className="absolute -bottom-36 right-1/4 w-[34rem] h-[34rem] bg-indigo-900/30 rounded-full blur-[150px]" />
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6 relative overflow-hidden font-sans">
+      {/* Background Ambient Pulses */}
+      <div className="absolute top-1/3 left-1/4 w-96 h-96 bg-cyan-500/10 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute bottom-1/3 right-1/4 w-96 h-96 bg-blue-600/10 rounded-full blur-[120px] pointer-events-none" />
 
-        {/* Subtle Cyber Grid */}
-        <div
-          className="absolute inset-0 opacity-[0.035]"
-          style={{
-            backgroundImage:
-              "radial-gradient(#ffffff 1.2px, transparent 1.2px)",
-            backgroundSize: "36px 36px",
-          }}
-        />
-      </div>
+      {/* Grid Pattern Overlay */}
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,#0f172a_1px,transparent_1px),linear-gradient(to_bottom,#0f172a_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)] opacity-30 pointer-events-none" />
 
-      {/* Main Container */}
-      <main className="relative z-10 mx-auto my-auto flex w-full max-w-6xl flex-col items-center justify-center gap-10 lg:flex-row lg:items-center">
-        {/* Left Side: Gate Auth Console */}
-        <div className="w-full max-w-lg rounded-3xl border border-slate-800/90 bg-[#090d1c]/85 p-8 sm:p-9 shadow-2xl backdrop-blur-3xl transition-all duration-300">
-          {/* Header */}
-          <div className="mb-6 flex items-center justify-between border-b border-slate-800/80 pb-5">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-tr from-slate-900 to-slate-700 border border-slate-600/50 shadow-inner">
-                <span className="text-xl font-black bg-gradient-to-r from-cyan-400 via-sky-300 to-blue-400 bg-clip-text text-transparent">
-                  🎫
-                </span>
-              </div>
+      {/* Main Terminal Shell */}
+      <div className="flex flex-col lg:flex-row gap-6 max-w-4xl w-full z-10">
+        {/* LEFT PANEL: AUTHENTICATION DECK */}
+        <div className="flex-1 bg-slate-900/85 backdrop-blur-md border border-slate-800 rounded-2xl p-6 flex flex-col justify-between shadow-2xl">
+          <div>
+            {/* Header info */}
+            <div className="flex justify-between items-start mb-6">
               <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="text-2xl font-black tracking-tight text-white">
-                    UNIFLOW
-                  </h1>
-                  <span className="rounded-full bg-slate-800/90 px-2 py-0.5 text-[10px] font-mono text-cyan-400 border border-cyan-400/20">
-                    AIRPORT GATE PASS
-                  </span>
-                </div>
+                <span className="bg-cyan-500/10 text-cyan-400 border border-cyan-400/20 text-[10px] font-mono px-2 py-0.5 rounded tracking-wide">
+                  AIRPORT GATE PASS
+                </span>
+                <h1 className="text-xl font-black tracking-wider text-white mt-1">
+                  UNIFLOW
+                </h1>
                 <p className="text-xs text-slate-400">
                   Autonomous Campus Boarding Terminal
                 </p>
               </div>
+              <div className="text-right font-mono">
+                <span className="text-[10px] block text-emerald-400 font-semibold">
+                  GATE 3B ONLINE
+                </span>
+                <span className="text-[10px] text-slate-500">
+                  READY FOR SCAN
+                </span>
+              </div>
             </div>
 
-            <div className="flex flex-col items-end">
-              <span className="flex items-center gap-1.5 text-xs font-mono font-medium text-emerald-400">
-                <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
-                GATE OPEN
-              </span>
-              <span className="text-[10px] text-slate-500 font-mono mt-0.5">
-                READY FOR TEAR
-              </span>
-            </div>
-          </div>
-
-          {/* Ticket Type Switcher Tabs */}
-          <div className="mb-6 grid grid-cols-3 gap-1.5 rounded-2xl bg-[#060813] p-1.5 border border-slate-800/90">
-            {Object.keys(PASS_DATA).map((key) => {
-              const item = PASS_DATA[key];
-              const isSelected = role === key;
-              return (
+            {/* Ticket Selector Tabs */}
+            <div className="flex gap-2 p-1 bg-slate-950 border border-slate-800 rounded-xl mb-6 relative">
+              {[
+                { key: "admin", label: "Registrar Ticket" },
+                { key: "faculty", label: "Faculty Ticket" },
+                { key: "student", label: "Scholar Ticket" },
+              ].map(({ key, label }) => (
                 <button
                   key={key}
                   type="button"
                   onClick={() => handleRoleChange(key)}
-                  className={`py-2 text-xs font-bold rounded-xl transition-all duration-300 cursor-pointer ${
-                    isSelected
-                      ? `bg-slate-800 text-white shadow-md border border-slate-700`
-                      : "text-slate-400 hover:text-slate-200"
-                  }`}
+                  className="flex-1 py-2 text-xs font-semibold relative rounded-lg text-center transition-colors cursor-pointer"
                 >
-                  {item.tab}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Form */}
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleTearTicket();
-            }}
-            className="space-y-4"
-          >
-            <div>
-              <label className="mb-1.5 flex justify-between text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                <span>Boarding Terminal Campus</span>
-                <span className="font-mono text-emerald-400 text-[10px]">
-                  Verified Origin
-                </span>
-              </label>
-              <input
-                type="text"
-                readOnly
-                value={active.campus}
-                className="w-full rounded-xl border border-slate-800 bg-[#060813]/90 py-2.5 px-3.5 text-xs text-slate-300 font-medium focus:outline-none"
-              />
-            </div>
-
-            <div>
-              <label className="mb-1.5 flex justify-between text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                <span>Passholder Identity</span>
-                <span className="font-mono text-cyan-400 text-[10px]">
-                  Active Boarding UID
-                </span>
-              </label>
-              <input
-                type="email"
-                readOnly
-                value={active.email}
-                className="w-full rounded-xl border border-slate-800 bg-[#060813]/90 py-2.5 px-3.5 text-xs font-mono text-cyan-300 focus:outline-none"
-              />
-            </div>
-
-            <div>
-              <label className="mb-1.5 flex justify-between text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                <span>Gate Authentication Token</span>
-                <span className="font-mono text-slate-500 text-[10px]">
-                  Hardware Token
-                </span>
-              </label>
-              <input
-                type="password"
-                value={passkey}
-                onChange={(e) => setPasskey(e.target.value)}
-                className="w-full rounded-xl border border-slate-800 bg-[#060813]/90 py-2.5 px-3.5 text-xs text-slate-200 tracking-wider focus:outline-none"
-              />
-            </div>
-
-            {/* Launch Tear Button */}
-            <button
-              type="submit"
-              disabled={isProcessing}
-              className={`w-full mt-2 py-3.5 rounded-xl bg-gradient-to-r ${active.accent} text-slate-950 font-black text-xs uppercase tracking-widest shadow-xl transition-all duration-300 hover:brightness-110 active:scale-95 cursor-pointer flex items-center justify-center gap-2`}
-              style={{ boxShadow: `0 10px 25px -5px ${active.glow}` }}
-            >
-              <span>
-                {isProcessing
-                  ? "Tearing Ticket & Validating..."
-                  : `Tear Ticket to Enter ${active.name.split(" ")[0]}'s Portal`}
-              </span>
-              <span className="text-base leading-none">✂️</span>
-            </button>
-          </form>
-
-          {/* Telemetry Footer */}
-          <div className="mt-6 flex justify-between items-center text-[11px] text-slate-400 border-t border-slate-800/80 pt-4 font-mono">
-            <span>
-              Route: <strong className="text-emerald-400">200 OK</strong>
-            </span>
-            <span>
-              Security:{" "}
-              <strong className="text-cyan-400">PostgreSQL Multi-RLS</strong>
-            </span>
-          </div>
-        </div>
-
-        {/* Right Side: DIGITAL TEAR-OFF TICKET PASS */}
-        <div className="relative flex flex-col items-center">
-          {/* Main Ticket Shell */}
-          <div
-            className="relative w-84 rounded-3xl bg-[#0a0f24] border border-slate-800 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.9)] overflow-hidden transition-all duration-500"
-            style={{ boxShadow: `0 20px 50px -10px ${active.glow}` }}
-          >
-            {/* --- TOP TICKET SECTION (BOARDING DETAILS) --- */}
-            <div className="p-6 bg-gradient-to-b from-[#0f1738] to-[#0a0f24]">
-              {/* Header */}
-              <div className="flex items-center justify-between border-b border-slate-700/60 pb-3 mb-4">
-                <div>
-                  <span className="text-[10px] font-mono tracking-widest text-slate-400 block uppercase">
-                    Boarding Pass
-                  </span>
-                  <span className="text-xs font-black text-white tracking-wider">
-                    UNIFLOW PASS
-                  </span>
-                </div>
-                <span
-                  className={`text-[9px] font-mono px-2 py-0.5 rounded-md border font-black ${active.badgeBg}`}
-                >
-                  {active.category}
-                </span>
-              </div>
-
-              {/* Boarding Gate Matrix */}
-              <div className="grid grid-cols-3 gap-2 p-2.5 rounded-xl bg-black/40 border border-slate-800/80 mb-4 text-center font-mono">
-                <div>
-                  <p className="text-[9px] text-slate-400">GATE</p>
-                  <p className="text-xs font-bold text-emerald-400">
-                    {active.gate}
-                  </p>
-                </div>
-                <div className="border-x border-slate-800">
-                  <p className="text-[9px] text-slate-400">ZONE</p>
-                  <p className="text-xs font-bold text-sky-400">
-                    {active.zone}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[9px] text-slate-400">SEAT</p>
-                  <p className="text-xs font-bold text-cyan-300">
-                    {active.seat}
-                  </p>
-                </div>
-              </div>
-
-              {/* Avatar & Person Details */}
-              <div className="flex items-center gap-3.5 mb-4">
-                <div
-                  className={`w-14 h-14 rounded-2xl bg-gradient-to-tr ${active.accent} flex items-center justify-center text-slate-950 font-black text-xl shadow-lg shrink-0`}
-                >
-                  {active.initials}
-                </div>
-                <div className="overflow-hidden">
-                  <h3 className="truncate text-base font-bold text-white tracking-tight">
-                    {active.name}
-                  </h3>
-                  <p className="truncate text-xs text-slate-300">
-                    {active.program}
-                  </p>
-                  <p className="truncate text-[10px] text-slate-400">
-                    {active.dept}
-                  </p>
-                </div>
-              </div>
-
-              {/* KPIs */}
-              <div className="flex justify-between items-center text-[11px] font-mono text-slate-300 bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
-                <span>{active.kpi1}</span>
-                <span className="text-emerald-400">{active.kpi2}</span>
-              </div>
-            </div>
-
-            {/* --- REALISTIC PERFORATED TEAR-LINE (WITH CIRCULAR HOLE-PUNCH CUTOUTS) --- */}
-            <div className="relative flex items-center justify-between my-0 bg-[#0a0f24] h-7 overflow-visible">
-              {/* Left Cutout Circle */}
-              <div className="w-6 h-6 rounded-full bg-[#050711] -ml-3 border-r border-slate-800 shadow-inner" />
-
-              {/* Dashed Tear Line */}
-              <div className="flex-1 border-b-2 border-dashed border-slate-600/80 mx-2 relative flex justify-center items-center">
-                <span className="absolute bg-[#0a0f24] px-2 text-[9px] font-mono text-slate-400 tracking-widest flex items-center gap-1">
-                  <span>✂</span> TEAR HERE TO VALIDATE
-                </span>
-              </div>
-
-              {/* Right Cutout Circle */}
-              <div className="w-6 h-6 rounded-full bg-[#050711] -mr-3 border-l border-slate-800 shadow-inner" />
-            </div>
-
-            {/* --- BOTTOM TICKET STUB (TEARS AWAY ON CLICK) --- */}
-            <div
-              onClick={handleTearTicket}
-              style={{
-                transform: isTorn
-                  ? "translateY(120px) rotate(14deg) scale(0.92)"
-                  : "translateY(0px) rotate(0deg) scale(1)",
-                opacity: isTorn ? 0 : 1,
-                transition:
-                  "transform 0.65s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.55s ease",
-              }}
-              className="p-5 bg-gradient-to-b from-[#0c122c] to-[#070b18] cursor-pointer hover:bg-[#0f1738] transition-colors group"
-            >
-              <div className="flex items-center justify-between text-[10px] font-mono text-slate-400 mb-2">
-                <span>
-                  PASS STUB:{" "}
-                  <strong className="text-slate-200">{active.ticketNo}</strong>
-                </span>
-                <span className="text-emerald-400 font-bold group-hover:scale-110 transition-transform">
-                  CLICK TO TEAR ✂
-                </span>
-              </div>
-
-              {/* Realistic SVG Barcode Graphic */}
-              <div className="p-2.5 rounded-lg bg-black/60 border border-slate-800 flex flex-col items-center justify-center">
-                <div className="h-9 w-full flex items-center justify-between px-1">
-                  {[
-                    4, 2, 6, 1, 5, 3, 2, 7, 1, 4, 3, 6, 2, 5, 1, 3, 6, 2, 4, 1,
-                    5, 3, 2, 7, 2, 4, 6,
-                  ].map((w, i) => (
-                    <div
-                      key={i}
-                      className="bg-slate-200 h-full"
-                      style={{
-                        width: `${w}px`,
-                        opacity: i % 2 === 0 ? 0.95 : 0.65,
+                  {selectedRole === key && (
+                    <motion.div
+                      layoutId="roleActiveBubble"
+                      className="absolute inset-0 bg-cyan-500/20 border border-cyan-400/50 rounded-lg shadow-[0_0_12px_rgba(6,182,212,0.25)]"
+                      transition={{
+                        type: "spring",
+                        stiffness: 400,
+                        damping: 30,
                       }}
                     />
-                  ))}
+                  )}
+                  <span
+                    className={
+                      selectedRole === key
+                        ? "text-cyan-300 font-bold z-10 relative"
+                        : "text-slate-400 z-10 relative hover:text-slate-200"
+                    }
+                  >
+                    {label}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {/* Form Inputs */}
+            <div className="space-y-4">
+              <div>
+                <div className="flex justify-between text-[10px] text-slate-400 mb-1 font-mono">
+                  <span>BOARDING TERMINAL CAMPUS</span>
+                  <span className="text-emerald-400">VERIFIED ORIGIN</span>
                 </div>
-                <span className="mt-1 text-[9px] font-mono text-slate-400 tracking-widest">
-                  {active.barcodeText}
-                </span>
+                <input
+                  type="text"
+                  disabled
+                  value="UniFlow Central Institute of Technology"
+                  className="w-full bg-slate-950/70 border border-slate-800 rounded-lg p-2.5 text-xs text-slate-500 cursor-not-allowed select-none"
+                />
               </div>
 
-              <div className="mt-3 flex items-center justify-between text-[10px] text-slate-500 font-mono">
-                <span className="flex items-center gap-1 text-emerald-400">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  BOARDING READY
+              <div>
+                <div className="flex justify-between text-[10px] text-slate-400 mb-1 font-mono">
+                  <span>PASSHOLDER IDENTITY</span>
+                  <span className="text-cyan-400 animate-pulse">
+                    ACTIVE BOARDING UID
+                  </span>
+                </div>
+                <input
+                  type="email"
+                  placeholder={
+                    selectedRole === "admin"
+                      ? "admin.registry@cit.uniflow.ac.in"
+                      : selectedRole === "faculty"
+                        ? "faculty.user@cit.uniflow.ac.in"
+                        : "rohan.varma@cit.uniflow.ac.in"
+                  }
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-cyan-400 rounded-lg p-2.5 text-xs font-mono text-cyan-300 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-cyan-400/40 transition-all"
+                />
+              </div>
+
+              <div>
+                <div className="flex justify-between text-[10px] text-slate-400 mb-1 font-mono">
+                  <span>GATE AUTHENTICATION TOKEN</span>
+                  <span className="text-slate-500">HARDWARE TOKEN</span>
+                </div>
+                <input
+                  type="password"
+                  placeholder="•••••••••••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-cyan-400 rounded-lg p-2.5 text-xs font-mono text-cyan-300 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-cyan-400/40 transition-all"
+                />
+              </div>
+
+              {/* Error messages */}
+              <AnimatePresence>
+                {errorMessage && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="text-xs text-rose-400 font-mono bg-rose-500/10 border border-rose-500/20 p-2 rounded-lg"
+                  >
+                    ⚠ {errorMessage}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </div>
+
+          {/* Trigger Button */}
+          <div className="mt-6">
+            <motion.button
+              type="button"
+              onClick={handleBiometricAuth}
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.98 }}
+              disabled={isScanning}
+              className={`w-full py-3 rounded-xl font-mono text-xs font-bold transition-all flex justify-center items-center gap-2 cursor-pointer relative overflow-hidden ${
+                scanSuccess
+                  ? "bg-emerald-400 text-slate-950 shadow-[0_0_20px_rgba(52,211,153,0.4)]"
+                  : isScanning
+                    ? "bg-cyan-500 text-slate-950 cursor-wait"
+                    : "bg-gradient-to-r from-cyan-400 to-cyan-500 hover:from-cyan-300 hover:to-cyan-400 text-slate-950 shadow-lg shadow-cyan-500/20"
+              }`}
+            >
+              {isScanning ? (
+                <span className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-slate-950 animate-ping" />
+                  {scanStepText}
                 </span>
-                <span>RLS VERIFIED</span>
+              ) : (
+                <>
+                  SCAN BIOMETRICS & ENTER {selectedRole.toUpperCase()}'S PORTAL
+                  ⤢
+                </>
+              )}
+            </motion.button>
+          </div>
+
+          <div className="flex justify-between text-[10px] font-mono text-slate-600 mt-4 border-t border-slate-800 pt-2">
+            <span>Route: 200 OK</span>
+            <span>Security: PostgreSQL Multi-RLS</span>
+          </div>
+        </div>
+
+        {/* RIGHT PANEL: HOLOGRAM BOARDING PASS WITH LASER SCANNER */}
+        <motion.div
+          animate={
+            isScanning
+              ? { borderColor: ["#1e293b", "#06b6d4", "#10b981", "#1e293b"] }
+              : {}
+          }
+          transition={{ duration: 1.5, repeat: isScanning ? Infinity : 0 }}
+          className={`w-full lg:w-80 bg-slate-900/90 backdrop-blur-md border rounded-2xl p-5 flex flex-col justify-between relative shadow-2xl overflow-hidden transition-colors ${
+            scanSuccess
+              ? "border-emerald-400/80 shadow-[0_0_25px_rgba(52,211,153,0.2)]"
+              : "border-slate-800"
+          }`}
+        >
+          {/* Laser Scanning Animation */}
+          {isScanning && (
+            <>
+              <motion.div
+                initial={{ top: "0%" }}
+                animate={{ top: ["0%", "98%", "0%"] }}
+                transition={{
+                  duration: 1.2,
+                  repeat: Infinity,
+                  ease: "easeInOut",
+                }}
+                className="absolute inset-x-0 h-1 bg-gradient-to-r from-transparent via-cyan-400 to-transparent shadow-[0_0_15px_#06b6d4,0_0_30px_#06b6d4] z-30 pointer-events-none"
+              />
+
+              <motion.div
+                initial={{ top: "-30%" }}
+                animate={{ top: ["-20%", "80%", "-20%"] }}
+                transition={{
+                  duration: 1.2,
+                  repeat: Infinity,
+                  ease: "easeInOut",
+                }}
+                className="absolute inset-x-0 h-28 bg-gradient-to-b from-cyan-400/15 to-transparent z-20 pointer-events-none"
+              />
+
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 0.6 }}
+                className="absolute inset-0 bg-[radial-gradient(#06b6d4_1px,transparent_1px)] [background-size:16px_16px] z-10 pointer-events-none"
+              />
+            </>
+          )}
+
+          {/* Pass Top Data */}
+          <div className="space-y-4 relative z-10">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-[10px] text-slate-500 font-mono">
+                  BOARDING PASS
+                </p>
+                <h2 className="text-sm font-bold text-slate-100 tracking-wider">
+                  UNIFLOW PASS
+                </h2>
+              </div>
+              <span
+                className={`text-[9px] px-2 py-0.5 rounded font-mono uppercase transition-colors ${
+                  scanSuccess
+                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-400/40"
+                    : "bg-cyan-500/10 text-cyan-300 border border-cyan-400/20"
+                }`}
+              >
+                {scanSuccess ? "AUTHENTICATED" : `${selectedRole} GATE ACCESS`}
+              </span>
+            </div>
+
+            {/* Gate Matrix */}
+            <div className="grid grid-cols-3 border border-slate-800 bg-slate-950 rounded-lg p-2 text-center text-[10px] font-mono">
+              <div>
+                <p className="text-slate-500 text-[8px]">GATE</p>
+                <p className="text-cyan-400 font-bold">GATE 3B</p>
+              </div>
+              <div className="border-x border-slate-800">
+                <p className="text-slate-500 text-[8px]">ZONE</p>
+                <p className="text-cyan-400 font-bold">ZONE 1</p>
+              </div>
+              <div>
+                <p className="text-slate-500 text-[8px]">SEAT</p>
+                <p className="text-cyan-400 font-bold">
+                  {selectedRole === "student"
+                    ? "STU-04A"
+                    : selectedRole === "faculty"
+                      ? "FAC-12C"
+                      : "ADM-REG"}
+                </p>
+              </div>
+            </div>
+
+            {/* Dynamic Card User Info */}
+            <div className="flex items-center gap-3 p-3 bg-slate-950 rounded-xl border border-slate-800">
+              <div className="w-11 h-11 bg-cyan-500/10 border border-cyan-400/30 rounded-xl flex items-center justify-center font-black text-cyan-300 text-sm shadow-[0_0_8px_rgba(6,182,212,0.15)]">
+                {displayInitials}
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-bold text-white text-xs truncate capitalize">
+                  {displayName}
+                </h3>
+                <p className="text-[10px] text-slate-400 capitalize truncate">
+                  {selectedRole === "student"
+                    ? "B.Tech Spaceflight & Robotics"
+                    : selectedRole === "faculty"
+                      ? "Faculty Dept. Lead"
+                      : "Registrar Administrator"}
+                </p>
+                <p className="text-[8px] text-slate-500 font-mono truncate">
+                  Dept. of Aerospace Engineering
+                </p>
+              </div>
+            </div>
+
+            {/* Metrics Row */}
+            <div className="grid grid-cols-2 p-2 bg-slate-950 border border-slate-800 rounded-lg text-center text-[10px] font-mono">
+              <div>
+                <p className="text-slate-500 text-[8px]">CGPA / STATUS</p>
+                <p className="text-slate-300 font-semibold">
+                  {selectedRole === "student" ? "9.71 / 10" : "ACTIVE"}
+                </p>
+              </div>
+              <div className="border-l border-slate-800">
+                <p className="text-slate-500 text-[8px]">ATTENDANCE</p>
+                <p className="text-slate-300 font-semibold">
+                  {selectedRole === "student" ? "87.4%" : "N/A"}
+                </p>
               </div>
             </div>
           </div>
 
-          <p className="mt-3 text-[11px] text-slate-400 flex items-center gap-1.5">
-            <span className="text-cyan-400">✂️</span> Click the lower stub or
-            launch button to play the tear animation
-          </p>
-        </div>
-      </main>
+          {/* Notch Line separator */}
+          <div className="relative my-4 flex items-center justify-between">
+            <div className="absolute left-[-26px] w-5 h-5 bg-slate-950 rounded-full border border-slate-800" />
+            <div className="w-full border-t border-slate-800 mx-2 relative flex justify-center items-center py-2">
+              <span className="text-[9px] text-slate-500 font-mono tracking-widest uppercase">
+                {isScanning
+                  ? "/// BIO-ENCRYPTION ACTIVE ///"
+                  : "OPTICAL VERIFICATION PORT"}
+              </span>
+            </div>
+            <div className="absolute right-[-26px] w-5 h-5 bg-slate-950 rounded-full border border-slate-800" />
+          </div>
 
-      {/* Footer */}
-      <footer className="relative z-10 flex flex-wrap items-center justify-between border-t border-slate-800/60 pt-4 text-[11px] text-slate-400">
-        <div>
-          <span className="font-bold text-slate-200 tracking-wider">
-            UNIFLOW CORE
-          </span>{" "}
-          &bull; Full-Stack Campus Mesh
-        </div>
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => navigate("/")}
-            className="hover:text-cyan-400 transition cursor-pointer font-medium"
-          >
-            &larr; Return to Landing
-          </button>
-          <span className="font-mono text-slate-400">TERMINAL: READY</span>
-        </div>
-      </footer>
+          {/* Barcode Hologram & Status */}
+          <div className="space-y-3 font-mono relative z-10">
+            <div className="flex justify-between text-[8px] text-slate-500">
+              <span>PASS STUB: UF-TKT-25R0-994</span>
+              <button
+                type="button"
+                onClick={handleBiometricAuth}
+                className="text-cyan-400 hover:text-cyan-300 cursor-pointer underline bg-transparent border-none p-0"
+              >
+                INITIALIZE SCAN ⤢
+              </button>
+            </div>
+
+            <div className="h-10 bg-slate-950 rounded-lg flex flex-col justify-end items-center p-1 border border-slate-800">
+              <div className="w-full h-full opacity-65 bg-[repeating-linear-gradient(to_right,transparent,transparent_2px,#334155_2px,#334155_5px,#06b6d4_5px,#06b6d4_7px)]" />
+              <p className="text-[7px] text-slate-500 tracking-widest mt-0.5">
+                *UF-STU-2026-994*
+              </p>
+            </div>
+
+            <div className="flex justify-between items-center text-[8px] text-slate-500 pt-1">
+              <span className="flex items-center gap-1.5">
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    scanSuccess
+                      ? "bg-emerald-400 shadow-[0_0_8px_#34d399]"
+                      : isScanning
+                        ? "bg-cyan-400 animate-ping"
+                        : "bg-emerald-400"
+                  }`}
+                />
+                {scanSuccess
+                  ? "ACCESS VERIFIED"
+                  : isScanning
+                    ? "OPTICAL SWEEP"
+                    : "TERMINAL READY"}
+              </span>
+              <span>RLS MULTI-TENANT</span>
+            </div>
+          </div>
+        </motion.div>
+      </div>
     </div>
   );
 }
