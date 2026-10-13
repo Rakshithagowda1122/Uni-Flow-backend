@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies.auth import AuthenticatedPrincipal
-from app.models import AttendanceRecord, Class
+from app.models import AttendanceRecord, Class, Enrollment
 from app.schemas.attendance import AttendanceCreate, AttendanceStatus
 
 
@@ -38,6 +38,19 @@ async def create_attendance(
     payload: AttendanceCreate,
 ) -> AttendanceRecord:
     await ensure_assigned_class(session, principal, class_id)
+    enrollment_id = await session.scalar(
+        select(Enrollment.id).where(
+            Enrollment.college_id == principal.college_id,
+            Enrollment.class_id == class_id,
+            Enrollment.student_id == payload.student_id,
+            Enrollment.status == "enrolled",
+        )
+    )
+    if enrollment_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Actively enrolled student was not found in this class.",
+        )
     values: dict[str, object] = {
         "college_id": principal.college_id,
         "class_id": class_id,

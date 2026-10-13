@@ -330,4 +330,32 @@ CREATE POLICY tenant_isolation_enrollments ON enrollments
    - `idx_classes_tenant_term` ON `classes (college_id, term)`
    - `idx_enrollments_student` ON `enrollments (college_id, student_id)`
 3. **Partitioning Readiness:** For high-volume tables (`attendance_records`, `audit_logs`), the architecture supports declarative declarative range partitioning by `session_date` or hash partitioning by `college_id` when horizontal scale demands it.
-4.
+4. **Tenant-Scoped Access:** Application queries filter by tenant, while row-level policies provide defense in depth in PostgreSQL.
+
+## 6. UniFlow API Schema Extensions
+
+The integrated API adds the tenant-owned tables required by the functional
+requirements that were not represented in the original schema:
+
+| Table | Purpose |
+| --- | --- |
+| `class_meetings` | Weekly meeting day and start/end time for a class |
+| `course_materials` | Faculty-shared resource titles, descriptions, and URLs scoped to a class |
+| `notices` | Campus announcements authored by users |
+| `test_assessments` | Faculty-created assessments associated with a class |
+| `student_marks` | A student's score for an assessment |
+| `faculty_attendance` | Faculty attendance, separate from student attendance |
+| `academic_calendar_entries` | Holiday and exam date ranges |
+| `portal_dashboards` | Per-user, per-tenant JSONB settings used by the existing portal editors |
+
+Every added domain table carries `college_id` and is protected by the same
+transaction-local tenant policy as the original entities. `portal_dashboards`
+stores user-editable display settings only; timetable, attendance, notices,
+tests, marks, and shared course materials remain in their relational tables.
+Course material URLs point to externally hosted resources; file uploads are not
+stored by this application.
+
+The application creates missing tables from the SQLAlchemy metadata at startup
+and enables/forces RLS policies for every tenant-owned table. The Compose
+PostgreSQL initialization creates a dedicated non-superuser `uniflow_app` login
+so runtime queries are subject to those policies.

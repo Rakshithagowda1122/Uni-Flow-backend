@@ -1,106 +1,143 @@
-# Uni Flow backend
+# UniFlow
 
-This FastAPI service follows `project_requirements.md`, `database_architecture.md`,
-and `api_spec.md`. It does not create or alter database tables. The configured
-PostgreSQL database must already use the documented schema and tenant RLS policies.
+UniFlow is a React/Vite frontend backed by a FastAPI API and a tenant-isolated
+PostgreSQL database.
 
-## Run locally
+## Run the integrated stack
 
-Use Python 3.11 or newer. Create a virtual environment, install the dependencies,
-copy `.env.example` to `.env`, and set `DATABASE_URL` to the PostgreSQL connection
-string for the documented database. Then start the API from the repository root:
+1. Copy `.env.example` to `.env` and replace the placeholder secrets with unique
+   values. Keep passwords URL-safe because `DATABASE_URL` embeds the application
+   database password.
+2. Start Docker Desktop, then run:
 
-```powershell
-$env:DATABASE_URL = "postgresql+asyncpg://uniflow_admin:<password>@localhost:5432/uniflow_db"
-uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
+   ```powershell
+   docker compose up --build
+   ```
 
-The application imports and starts without opening a database connection. A valid
-`DATABASE_URL` is required when an implemented database-backed route is called.
+   The frontend is available at `http://localhost:3000`; the API and OpenAPI
+   documentation are available at `http://localhost:8000` and
+   `http://localhost:8000/docs`. The browser calls FastAPI directly using
+   `VITE_API_BASE_URL` (default `http://localhost:8000/api/v1`), not the
+   frontend server. If you change the backend host port, update this URL too.
+3. On a new database, the API creates the mapped tables and tenant RLS policies
+   at startup. The database initialization script creates a non-superuser
+   `uniflow_app` role for API access. For an existing database, create that role
+   and grant it schema/table ownership or equivalent privileges before starting
+   the API; do not delete the existing database volume.
+4. Seed development accounts after the API is healthy. In PowerShell, set
+   `SEED_PASSWORD` to a private development password, then run:
 
-## Request identity and tenant isolation
+   ```powershell
+   $env:SEED_PASSWORD = "choose-a-private-development-password"
+   docker compose exec -e SEED_PASSWORD=$env:SEED_PASSWORD backend python seed_db.py
+   ```
 
-The source documents define roles and tenant isolation, but do not specify an
-authentication protocol or endpoint. No login or token system is added here.
-An upstream trusted authentication integration must place an
-`AuthenticatedPrincipal` instance on `request.state.uniflow_principal`, containing
-the authenticated `user_id`, `college_id`, and `role` (`ADMIN`, `FACULTY`, or
-`STUDENT`). Requests without this context receive `401`; requests with a role
-that is not permitted receive `403`.
+   The script is idempotent and creates two demo campuses. For
+   `northstar-state`, the accounts are `admin@northstar.example.edu`,
+   `faculty01@northstar.example.edu`, and `student01@northstar.example.edu`;
+   `lakeside-polytechnic` uses the same account pattern at
+   `lakeside.example.edu`. All seeded accounts use the `SEED_PASSWORD` value.
+   Seeded records intentionally have no default password. Each campus also gets
+   an introductory CS101 class with one enrolled student and a weekly meeting,
+   so the timetable and class-roster flows are ready to try. The seed script
+   also creates idempotent, clearly labeled `DEMO:` assessments, marks,
+   materials, a campus notice, a calendar entry, and sample attendance records.
+   These development records are persisted in PostgreSQL and can be edited from
+   their appropriate role dashboards.
 
-Database-backed operations run in a transaction and set
-`app.current_tenant_id` transaction-locally before queries, matching the database
-architecture's RLS context convention.
+   To provision or reset one specific student account without changing the
+   passwords of the other seeded accounts, set `SEED_STUDENT_EMAIL` and
+   `SEED_STUDENT_PASSWORD` for that seed run. Optionally set
+   `SEED_STUDENT_COLLEGE_SLUG` (defaults to `northstar-state`) and
+   `SEED_STUDENT_NAME`:
 
-The database architecture enables RLS on `attendance_records` but does not
-provide a policy for that table in its policy definitions. Apply an approved
-tenant policy before relying on RLS-protected attendance reads or writes; this
-backend does not alter the schema or invent a policy.
+   ```powershell
+   $env:SEED_STUDENT_EMAIL = "student@example.edu"
+   $env:SEED_STUDENT_PASSWORD = "choose-a-private-password"
+   $env:SEED_STUDENT_COLLEGE_SLUG = "northstar-state"
+   docker compose exec `
+     -e SEED_STUDENT_EMAIL=$env:SEED_STUDENT_EMAIL `
+     -e SEED_STUDENT_PASSWORD=$env:SEED_STUDENT_PASSWORD `
+     -e SEED_STUDENT_COLLEGE_SLUG=$env:SEED_STUDENT_COLLEGE_SLUG `
+     backend python seed_db.py
+   ```
 
-## Implemented API routes
+   The account is activated and enrolled in the campus's seeded CS101 class.
+   This operation only creates or updates the explicitly named student account.
 
-Base path: `/api/v1`.
+For local development without Docker, start PostgreSQL with a database and
+non-superuser account, configure `DATABASE_URL` and `TOKEN_SECRET`, then run
+`uvicorn app.main:app --reload --port 8000` from the repository root and
+`npm run dev` from `frontend`. The Vite client sends API requests directly to
+`VITE_API_BASE_URL`, which defaults to `http://localhost:8000/api/v1` and rejects
+configuration that targets the frontend port 3000. `NEXT_PUBLIC_API_URL` is a
+Next.js-specific variable and is not used by this Vite application.
 
-| Method | Route | Requirement | Database mapping |
-| --- | --- | --- | --- |
-| POST | `/faculty/classes/{class_id}/attendance` | FAC-01 | Checks the assigned `classes` row; inserts into `attendance_records`. |
-| PUT | `/faculty/classes/{class_id}/attendance/{student_id}?session_date={date}` | FAC-01 | Checks `classes`; updates the matching `attendance_records` row. |
-| GET | `/students/me/attendance` | STD-01 | Selects the current student's `attendance_records`. |
+## Authentication and tenant isolation
 
-The attendance POST accepts one record per request: `student_id`, `status`, and
-optional `session_date`. If omitted, the database's documented `CURRENT_DATE`
-default is used. The attendance status values are `present`, `absent`, `late`,
-and `excused`. Extra request fields are rejected. The API specification does not
-define a request schema; this minimal single-record contract is derived from the
-existing `attendance_records` columns and requires confirmation if a different
-submission shape is intended. A repeated class/student/date insertion returns
-`409`.
+`POST /api/v1/auth/login` accepts `email`, `password`, `role` (`ADMIN`,
+`FACULTY`, or `STUDENT`), and `college_slug`. It establishes a short-lived
+signed session in an `HttpOnly`, `SameSite=Lax` cookie; production sets the
+`Secure` flag. The browser never stores or sends the signing token from
+JavaScript. `GET /api/v1/auth/session` verifies the session with the backend,
+and `POST /api/v1/auth/logout` revokes it server-side and expires the cookie.
+The frontend checks sessions before rendering protected routes and after
+browser history restoration. Protected API responses are marked `no-store`.
+Configure comma-separated trusted frontend origins with `FRONTEND_ORIGINS`;
+unsafe API requests from other origins are rejected.
 
-All other routes in `api_spec.md` are registered with their specified methods and
-paths and respond with `501 Not Implemented` plus the requirement ID and the
-specific database/specification clarification required. These responses do not
-claim to implement the underlying feature.
+Tenant-scoped database requests set `app.current_tenant_id` transaction-locally.
+The API enables and forces PostgreSQL row-level security for tenant-owned tables.
+Logging out increments the user's authentication version, invalidating all
+previously issued sessions for that account. The API adds this column to
+existing databases at startup.
+`TOKEN_SECRET` must be a unique random value of at least 32 characters. Do not
+use the example values in a deployed environment.
 
-## Documented mapping blockers
+## API coverage
 
-- ADM-01 and FAC-03: The source defines read-only averages but not the averaging
-  rule (including how attendance statuses are counted).
-- ADM-02, FAC-05, and STD-05: No notice table or notice database mapping exists.
-- ADM-03: No faculty-attendance table or database mapping exists.
-- FAC-02 and STD-02: `classes` has no meeting-day or meeting-time fields.
-- FAC-04: No test or marks table/mapping exists.
-- STD-03: Test marks are unmapped; `enrollments.final_grade` is not individual
-  test marks, and academic progress has no defined mapping.
-- STD-04: No holiday or exam-schedule table/mapping exists.
-- Authentication protocol/principal provisioning is not specified by the API
-  document; trusted middleware integration is needed to populate request identity.
-- The API document does not define attendance request/response schemas. The
-  implemented POST uses one database attendance record as its minimal request
-  contract. Confirm the body shape before client integration; batch attendance
-  submission is not specified.
+The API base path is `/api/v1`. Endpoints from `api_spec.md` are implemented:
 
-## Project layout
+| Role | Route | Purpose |
+| --- | --- | --- |
+| Auth | `POST /auth/login` | Authenticate a user within a campus |
+| Auth | `GET /auth/session` | Verify the server-side session |
+| Auth | `POST /auth/logout` | Revoke sessions and expire the session cookie |
+| Admin | `GET /admin/attendance?scope=college&aggregate=average` | College attendance average |
+| Admin | `POST /admin/notices` | Publish a global notice |
+| Admin | `GET /admin/faculty-attendance` | View faculty attendance |
+| Admin | `PUT /admin/campus` | Edit the campus display name |
+| Admin | `PUT /admin/users/{user_id}` | Edit a user's name, department, or status |
+| Admin | `PUT /admin/attendance/{attendance_id}` | Correct an attendance record |
+| Admin | `PUT /admin/classes/{class_id}` | Edit class details and weekly timetable |
+| Faculty | `POST /faculty/classes/{class_id}/attendance` | Record attendance |
+| Faculty | `PUT /faculty/classes/{class_id}/attendance/{student_id}?session_date={date}` | Update attendance |
+| Faculty | `PATCH /faculty/me/profile` | Edit faculty display name |
+| Faculty | `GET /faculty/timetable` | View assigned class schedule |
+| Faculty | `GET /faculty/classes/{class_id}/attendance?aggregate=average` | View class attendance average |
+| Faculty | `POST /faculty/classes/{class_id}/tests/{test_id}/marks` | Create a test and upload marks |
+| Faculty | `PUT /faculty/classes/{class_id}/tests/{test_id}/marks/{student_id}` | Update a mark |
+| Faculty | `PUT /faculty/classes/{class_id}/tests/{test_id}` | Edit assessment details |
+| Faculty | `PUT /faculty/classes/{class_id}/materials/{material_id}` | Edit a shared material link |
+| Faculty | `GET /faculty/notices` | Read campus notices |
+| Admin | `PUT`/`DELETE /admin/notices/{notice_id}` | Edit or remove campus announcements |
+| Student | `GET /students/me/attendance` | Read personal attendance |
+| Student | `PATCH /students/me/profile` | Edit student display name |
+| Student | `GET /students/me/timetable` | Read enrolled class schedule |
+| Student | `GET /students/me/marks` | Read marks and saved academic progress |
+| Student | `GET /students/academic-calendar` | Read upcoming holidays and exams |
+| Student | `GET /students/notices` | Read campus notices |
 
-```text
-app/
-  config.py
-  main.py
-  database/
-    session.py
-  dependencies/
-    auth.py
-  models/
-    entities.py
-  routes/
-    admin.py
-    api.py
-    faculty.py
-    students.py
-    unavailable.py
-  schemas/
-    attendance.py
-  services/
-    attendance.py
-requirements.txt
-.env.example
-```
+Dashboard summary values are derived from current tenant database records.
+Profile edits update only the authenticated user's display name; official
+attendance and grades are edited by faculty, and campus schedules, user
+directory entries, and announcements by administrators. Each edit uses a
+role-checked API and persists to PostgreSQL. Students can edit their own display
+name, but cannot change official academic records.
+
+The extended relational schema includes weekly class meetings, tests and marks,
+notices, faculty attendance, and academic-calendar entries. Attendance
+averages count `present` and `late` records as attended and exclude `excused`
+records from the denominator. Empty database-backed lists are returned as
+empty lists; the frontend shows API errors rather than pretending unsaved demo
+data was persisted.

@@ -12,3 +12,330 @@
   --font-sans: "Geist Variable", sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
 }
+
+@keyframes portal-aurora-drift {
+  0%,
+  100% {
+    transform: translate3d(-3%, -2%, 0) scale(0.96) rotate(-4deg);
+  }
+  50% {
+    transform: translate3d(4%, 3%, 0) scale(1.06) rotate(5deg);
+  }
+}
+
+@keyframes portal-rise-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes student-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes student-orbit-reverse {
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
+@keyframes student-avatar-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-3deg);
+  }
+  50% {
+    transform: translateY(-8px) rotate(3deg);
+  }
+}
+
+@keyframes student-sparkle {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.85) rotate(-12deg);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.12) rotate(12deg);
+  }
+}
+
+@keyframes student-name-glint {
+  to {
+    background-position: 200% center;
+  }
+}
+
+.portal-shell {
+  position: relative;
+  isolation: isolate;
+  overflow-x: clip;
+}
+
+html.session-checking #root {
+  visibility: hidden;
+}
+
+.portal-aurora {
+  position: fixed;
+  z-index: -1;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  contain: strict;
+}
+
+.portal-aurora__glow {
+  position: absolute;
+  width: min(62vw, 58rem);
+  aspect-ratio: 1;
+  border-radius: 9999px;
+  filter: blur(88px);
+  opacity: 0.13;
+  will-change: transform;
+  animation: portal-aurora-drift 30s ease-in-out infinite;
+}
+
+.portal-aurora__glow--blue {
+  top: -44%;
+  left: 4%;
+  background: radial-gradient(circle, #4f46e5 0%, #3b82f6 35%, transparent 70%);
+}
+
+.portal-aurora__glow--violet {
+  top: 20%;
+  right: -38%;
+  opacity: 0.11;
+  background: radial-gradient(circle, #8b5cf6 0%, #6366f1 38%, transparent 70%);
+  animation-delay: -11s;
+  animation-duration: 36s;
+}
+
+.portal-aurora__glow--teal {
+  bottom: -62%;
+  left: 18%;
+  width: min(48vw, 44rem);
+  opacity: 0.09;
+  background: radial-gradient(circle, #0f766e 0%, #0891b2 38%, transparent 72%);
+  animation-delay: -19s;
+  animation-duration: 40s;
+}
+
+.portal-content {
+  position: relative;
+  z-index: 1;
+}
+
+.portal-dashboard-content > div > section {
+  animation: portal-rise-in 620ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.portal-dashboard-content > div > section:nth-child(2) {
+  animation-delay: 70ms;
+}
+
+.portal-dashboard-content > div > section:nth-child(3) {
+  animation-delay: 130ms;
+}
+
+.portal-dashboard-content > div > section:nth-child(4) {
+  animation-delay: 190ms;
+}
+
+.portal-dashboard-content > div > section.grid > article {
+  animation: portal-rise-in 560ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.portal-dashboard-content > div > section.grid > div {
+  animation: portal-rise-in 560ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.portal-dashboard-content > div > section.grid > article:nth-child(2) {
+  animation-delay: 70ms;
+}
+
+.portal-dashboard-content > div > section.grid > div:nth-child(2) {
+  animation-delay: 70ms;
+}
+
+.portal-dashboard-content > div > section.grid > article:nth-child(3) {
+  animation-delay: 130ms;
+}
+
+.portal-dashboard-content > div > section.grid > div:nth-child(3) {
+  animation-delay: 130ms;
+}
+
+.portal-dashboard-content > div > section.grid > article:nth-child(4) {
+  animation-delay: 190ms;
+}
+
+.portal-dashboard-content > div > section.grid > div:nth-child(4) {
+  animation-delay: 190ms;
+}
+
+.portal-dashboard-content > div > section.grid > .portal-animated-content {
+  animation: none;
+}
+
+.portal-card {
+  transition:
+    transform 240ms ease,
+    border-color 240ms ease,
+    box-shadow 240ms ease;
+}
+
+.portal-card:hover {
+  transform: translateY(-2px);
+  border-color: rgb(99 102 241 / 32%);
+  box-shadow: 0 18px 44px -28px rgb(99 102 241 / 34%);
+}
+
+.portal-dashboard-content tbody tr {
+  transition: background-color 180ms ease;
+}
+
+.portal-dashboard-content tbody tr:hover {
+  background-color: rgb(99 102 241 / 5%);
+}
+
+.student-hero {
+  background:
+    radial-gradient(ellipse at 12% 0%, rgb(79 70 229 / 24%), transparent 48%),
+    radial-gradient(ellipse at 100% 100%, rgb(8 145 178 / 16%), transparent 42%),
+    linear-gradient(120deg, #0b1022 0%, #10142b 54%, #0b1827 100%);
+}
+
+.student-hero__mesh {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.2;
+  background-image: radial-gradient(rgb(199 210 254 / 52%) 0.7px, transparent 0.7px);
+  background-size: 22px 22px;
+  mask-image: linear-gradient(105deg, black, transparent 72%);
+}
+
+.student-hero__name {
+  background: linear-gradient(100deg, #fff 10%, #c4b5fd 35%, #a5f3fc 55%, #fff 72%);
+  background-size: 200% auto;
+  background-clip: text;
+  color: transparent;
+  animation: student-name-glint 9s linear infinite;
+}
+
+.student-hero__edge-glow {
+  position: absolute;
+  right: 12%;
+  bottom: -5rem;
+  width: 18rem;
+  height: 9rem;
+  border-radius: 50%;
+  background: rgb(99 102 241 / 24%);
+  filter: blur(64px);
+  pointer-events: none;
+}
+
+.student-hero__orbit-ring {
+  position: absolute;
+  border: 1px solid rgb(199 210 254 / 18%);
+  border-radius: 50%;
+}
+
+.student-hero__orbit-ring--outer {
+  inset: 0;
+  border-style: dashed;
+  animation: student-orbit 42s linear infinite;
+}
+
+.student-hero__orbit-ring--inner {
+  inset: 1.25rem;
+  border-color: rgb(103 232 249 / 20%);
+  transform: rotate(-28deg) scaleY(0.58);
+  animation: student-orbit-reverse 26s linear infinite;
+}
+
+.student-hero__orbit-dot {
+  position: absolute;
+  z-index: 5;
+  width: 0.55rem;
+  height: 0.55rem;
+  border: 2px solid #11162b;
+  border-radius: 50%;
+  box-shadow: 0 0 14px currentColor;
+}
+
+.student-hero__orbit-dot--one {
+  top: 1.1rem;
+  left: 5.6rem;
+  color: #a5b4fc;
+  background: currentColor;
+}
+
+.student-hero__orbit-dot--two {
+  right: 0.85rem;
+  bottom: 5.4rem;
+  color: #67e8f9;
+  background: currentColor;
+}
+
+.student-hero__orbit-dot--three {
+  bottom: 1.4rem;
+  left: 4.1rem;
+  color: #c4b5fd;
+  background: currentColor;
+}
+
+.student-hero__avatar {
+  animation: student-avatar-float 5s ease-in-out infinite;
+}
+
+.student-hero__sparkle,
+.student-hero__orbit-star {
+  animation: student-sparkle 3.4s ease-in-out infinite;
+}
+
+.student-hero__orbit-star--two {
+  animation-delay: -1.7s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .portal-aurora__glow,
+  .portal-dashboard-content > div > section,
+  .portal-dashboard-content > div > section.grid > article,
+  .portal-dashboard-content > div > section.grid > div,
+  .student-hero__name,
+  .student-hero__orbit-ring,
+  .student-hero__avatar,
+  .student-hero__sparkle,
+  .student-hero__orbit-star,
+  .student-hero .animate-pulse {
+    animation: none;
+  }
+
+  .portal-aurora__glow {
+    will-change: auto;
+  }
+
+  .portal-card,
+  .portal-dashboard-content tbody tr {
+    transition: none;
+  }
+
+  .portal-card:hover {
+    transform: none;
+  }
+
+  .student-hero a:hover {
+    transform: none;
+  }
+}

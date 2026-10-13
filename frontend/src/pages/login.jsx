@@ -1,25 +1,31 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
+import { apiRequest } from "../api/client.js";
 
 export default function Login() {
   const navigate = useNavigate();
 
-  // State
+  // Form State
   const [selectedRole, setSelectedRole] = useState("admin");
+  const [collegeSlug, setCollegeSlug] = useState("northstar-state");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [errorMessage, setErrorMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState(() => {
+    const logoutError = sessionStorage.getItem("uniflow_logout_error") || "";
+    sessionStorage.removeItem("uniflow_logout_error");
+    return logoutError;
+  });
 
-  // Biometric Laser Scan States
+  // Scan & Authentication States
   const [isScanning, setIsScanning] = useState(false);
   const [scanStepText, setScanStepText] = useState("");
   const [scanSuccess, setScanSuccess] = useState(false);
 
   // Dynamic user data extraction from email
   const displayName = email.trim()
-    ? email.split("@")[0].replace(/[\._\-]/g, " ")
-    : "New User";
+    ? email.split("@")[0].replace(/[._-]/g, " ")
+    : "Unauthenticated User";
 
   const displayInitials =
     displayName
@@ -38,53 +44,70 @@ export default function Login() {
   };
 
   const handleBiometricAuth = async () => {
+    if (!collegeSlug.trim() || !email.trim() || !password) {
+      setErrorMessage("Enter your campus slug, email, and password.");
+      return;
+    }
+
     setErrorMessage("");
     setIsScanning(true);
     setScanSuccess(false);
-
-    // Multi-phase scanner telemetry feedback
     setScanStepText("ACQUIRING BIOMETRIC SIGNATURE...");
 
-    setTimeout(() => {
-      setScanStepText("DECRYPTING HARDWARE TOKEN...");
-    }, 600);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      setScanStepText("VERIFYING WITH FASTAPI BACKEND...");
 
-    setTimeout(() => {
+      // Calls live FastAPI route at /api/v1/auth/login
+      const data = await apiRequest("/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: email.trim(),
+          password: password,
+          role: selectedRole.toUpperCase(),
+          college_slug: collegeSlug.trim(),
+        }),
+      });
+
+      // Only proceed when the backend establishes an HttpOnly session cookie.
+      if (!data?.user || typeof data.user.role !== "string") {
+        throw new Error(
+          "Invalid response received from authentication server.",
+        );
+      }
+
+      localStorage.removeItem("token");
+      localStorage.setItem("user", JSON.stringify(data.user));
+
       setScanStepText("ACCESS GRANTED. INITIALIZING PORTAL...");
       setScanSuccess(true);
-    }, 1200);
 
-    // Complete scan and transition to the next step (/admin)
-    setTimeout(async () => {
-      try {
-        const response = await fetch("http://localhost:8000/api/auth/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password, role: selectedRole }),
-        });
+      // Redirect to the authorized dashboard only after success
+      setTimeout(() => {
+        navigate(`/${selectedRole}`);
+      }, 500);
+    } catch (error) {
+      // Clear storage to prevent persistent unauthorized states
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      setScanSuccess(false);
 
-        if (response.ok) {
-          const data = await response.json();
-          localStorage.setItem("token", data.access_token || data.token);
-          localStorage.setItem(
-            "user",
-            JSON.stringify(data.user || { email, role: selectedRole }),
-          );
-        }
-      } catch (err) {
-        console.warn("Backend offline or bypass navigation:", err.message);
-      } finally {
-        setIsScanning(false);
-        // Direct route matching App.jsx routes:
-        if (selectedRole === "admin") navigate("/admin");
-        else if (selectedRole === "faculty") navigate("/faculty");
-        else if (selectedRole === "student") navigate("/student");
-        else navigate("/admin");
-      }
-    }, 1800);
+      // Strict failure notice: never fall back to mock data
+      const failedMessage =
+        error.message?.includes("Failed to fetch") ||
+        error.message?.includes("NetworkError")
+          ? "Backend is offline. Ensure FastAPI is running on port 8000."
+          : error.message || "Authentication failed. Invalid credentials.";
+
+      setErrorMessage(failedMessage);
+    } finally {
+      setIsScanning(false);
+    }
   };
 
-  // Trigger login immediately when Enter key is pressed in any input
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !isScanning) {
       e.preventDefault();
@@ -106,7 +129,6 @@ export default function Login() {
         {/* LEFT PANEL: AUTHENTICATION DECK */}
         <div className="flex-1 bg-slate-900/85 backdrop-blur-md border border-slate-800 rounded-2xl p-6 flex flex-col justify-between shadow-2xl">
           <div>
-            {/* Header info */}
             <div className="flex justify-between items-start mb-6">
               <div>
                 <span className="bg-cyan-500/10 text-cyan-400 border border-cyan-400/20 text-[10px] font-mono px-2 py-0.5 rounded tracking-wide">
@@ -121,10 +143,10 @@ export default function Login() {
               </div>
               <div className="text-right font-mono">
                 <span className="text-[10px] block text-emerald-400 font-semibold">
-                  GATE 3B ONLINE
+                  FASTAPI 8000 LIVE
                 </span>
                 <span className="text-[10px] text-slate-500">
-                  READY FOR SCAN
+                  AUTH V1 SECURE
                 </span>
               </div>
             </div>
@@ -170,6 +192,22 @@ export default function Login() {
             <div className="space-y-4">
               <div>
                 <div className="flex justify-between text-[10px] text-slate-400 mb-1 font-mono">
+                  <span>CAMPUS SLUG</span>
+                  <span className="text-cyan-400">TENANT ISOLATION</span>
+                </div>
+                <input
+                  type="text"
+                  autoComplete="organization"
+                  placeholder="northstar-state"
+                  value={collegeSlug}
+                  onChange={(e) => setCollegeSlug(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-cyan-400 rounded-lg p-2.5 text-xs font-mono text-cyan-300 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-cyan-400/40 transition-all"
+                />
+              </div>
+
+              <div>
+                <div className="flex justify-between text-[10px] text-slate-400 mb-1 font-mono">
                   <span>BOARDING TERMINAL CAMPUS</span>
                   <span className="text-emerald-400">VERIFIED ORIGIN</span>
                 </div>
@@ -192,10 +230,10 @@ export default function Login() {
                   type="email"
                   placeholder={
                     selectedRole === "admin"
-                      ? "admin.registry@cit.uniflow.ac.in"
+                      ? "admin@northstar.example.edu"
                       : selectedRole === "faculty"
-                        ? "faculty.user@cit.uniflow.ac.in"
-                        : "rohan.varma@cit.uniflow.ac.in"
+                        ? "faculty01@northstar.example.edu"
+                        : "rrakshithagowda518@gmail.com"
                   }
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -207,7 +245,7 @@ export default function Login() {
               <div>
                 <div className="flex justify-between text-[10px] text-slate-400 mb-1 font-mono">
                   <span>GATE AUTHENTICATION TOKEN</span>
-                  <span className="text-slate-500">HARDWARE TOKEN</span>
+                  <span className="text-slate-500">PASSWORD</span>
                 </div>
                 <input
                   type="password"
@@ -226,9 +264,10 @@ export default function Login() {
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: "auto" }}
                     exit={{ opacity: 0, height: 0 }}
-                    className="text-xs text-rose-400 font-mono bg-rose-500/10 border border-rose-500/20 p-2 rounded-lg"
+                    className="text-xs text-rose-400 font-mono bg-rose-500/10 border border-rose-500/20 p-2.5 rounded-lg flex items-center gap-2"
                   >
-                    ⚠ {errorMessage}
+                    <span>⚠</span>
+                    <span>{errorMessage}</span>
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -258,20 +297,19 @@ export default function Login() {
                 </span>
               ) : (
                 <>
-                  SCAN BIOMETRICS & ENTER {selectedRole.toUpperCase()}'S PORTAL
-                  ⤢
+                  AUTHENTICATE & ENTER {selectedRole.toUpperCase()}'S PORTAL ⤢
                 </>
               )}
             </motion.button>
           </div>
 
           <div className="flex justify-between text-[10px] font-mono text-slate-600 mt-4 border-t border-slate-800 pt-2">
-            <span>Route: 200 OK</span>
-            <span>Security: PostgreSQL Multi-RLS</span>
+            <span>FastAPI: /api/v1/auth/login</span>
+            <span>PostgreSQL: Live Verification</span>
           </div>
         </div>
 
-        {/* RIGHT PANEL: HOLOGRAM BOARDING PASS WITH LASER SCANNER */}
+        {/* RIGHT PANEL: HOLOGRAM BOARDING PASS */}
         <motion.div
           animate={
             isScanning
@@ -336,7 +374,7 @@ export default function Login() {
                     : "bg-cyan-500/10 text-cyan-300 border border-cyan-400/20"
                 }`}
               >
-                {scanSuccess ? "AUTHENTICATED" : `${selectedRole} GATE ACCESS`}
+                {scanSuccess ? "AUTHENTICATED" : `${selectedRole} PENDING`}
               </span>
             </div>
 
@@ -372,30 +410,26 @@ export default function Login() {
                   {displayName}
                 </h3>
                 <p className="text-[10px] text-slate-400 capitalize truncate">
-                  {selectedRole === "student"
-                    ? "B.Tech Spaceflight & Robotics"
-                    : selectedRole === "faculty"
-                      ? "Faculty Dept. Lead"
-                      : "Registrar Administrator"}
+                  {selectedRole} account
                 </p>
                 <p className="text-[8px] text-slate-500 font-mono truncate">
-                  Dept. of Aerospace Engineering
+                  UniFlow Campus Network
                 </p>
               </div>
             </div>
 
-            {/* Metrics Row */}
+            {/* Metrics Row: Displays pending until verified by database */}
             <div className="grid grid-cols-2 p-2 bg-slate-950 border border-slate-800 rounded-lg text-center text-[10px] font-mono">
               <div>
-                <p className="text-slate-500 text-[8px]">CGPA / STATUS</p>
+                <p className="text-slate-500 text-[8px]">ACADEMIC CGPA</p>
                 <p className="text-slate-300 font-semibold">
-                  {selectedRole === "student" ? "9.71 / 10" : "ACTIVE"}
+                  {scanSuccess ? "LIVE DB RECORD" : "-- / 10"}
                 </p>
               </div>
               <div className="border-l border-slate-800">
                 <p className="text-slate-500 text-[8px]">ATTENDANCE</p>
                 <p className="text-slate-300 font-semibold">
-                  {selectedRole === "student" ? "87.4%" : "N/A"}
+                  {scanSuccess ? "LIVE DB RECORD" : "-- %"}
                 </p>
               </div>
             </div>
@@ -417,7 +451,7 @@ export default function Login() {
           {/* Barcode Hologram & Status */}
           <div className="space-y-3 font-mono relative z-10">
             <div className="flex justify-between text-[8px] text-slate-500">
-              <span>PASS STUB: UF-TKT-25R0-994</span>
+              <span>PASS STUB: UF-TKT-25R0</span>
               <button
                 type="button"
                 onClick={handleBiometricAuth}
@@ -430,7 +464,7 @@ export default function Login() {
             <div className="h-10 bg-slate-950 rounded-lg flex flex-col justify-end items-center p-1 border border-slate-800">
               <div className="w-full h-full opacity-65 bg-[repeating-linear-gradient(to_right,transparent,transparent_2px,#334155_2px,#334155_5px,#06b6d4_5px,#06b6d4_7px)]" />
               <p className="text-[7px] text-slate-500 tracking-widest mt-0.5">
-                *UF-STU-2026-994*
+                *POSTGRESQL-VERIFIED*
               </p>
             </div>
 
@@ -442,14 +476,14 @@ export default function Login() {
                       ? "bg-emerald-400 shadow-[0_0_8px_#34d399]"
                       : isScanning
                         ? "bg-cyan-400 animate-ping"
-                        : "bg-emerald-400"
+                        : "bg-slate-500"
                   }`}
                 />
                 {scanSuccess
                   ? "ACCESS VERIFIED"
                   : isScanning
                     ? "OPTICAL SWEEP"
-                    : "TERMINAL READY"}
+                    : "TERMINAL STANDBY"}
               </span>
               <span>RLS MULTI-TENANT</span>
             </div>

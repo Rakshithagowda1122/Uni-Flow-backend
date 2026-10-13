@@ -1,125 +1,151 @@
-import React, { useEffect } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   BrowserRouter,
-  Routes,
-  Route,
-  Link,
   Navigate,
+  Route,
+  Routes,
   useLocation,
   useNavigate,
 } from "react-router-dom";
+import { apiRequest, clearClientSession } from "./api/client.js";
 import LandingPage from "./pages/Landingpage.jsx";
 import Login from "./pages/login.jsx";
 import AdminDashboard from "./pages/AdminDashboard.jsx";
 import FacultyDashboard from "./pages/FacultyDashboard.jsx";
 import StudentDashboard from "./pages/StudentDashboard.jsx";
 
-// Sequence order for pressing Enter
-const pageSequence = ["/", "/login", "/admin", "/faculty", "/student"];
+const ROLE_PATHS = {
+  admin: "/admin",
+  faculty: "/faculty",
+  student: "/student",
+};
 
-// Global keyboard listener to cycle pages on Enter key press
-function EnterKeyNavigator() {
+function parseStoredUser(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function ProtectedPortal({ role, children }) {
+  const [authorized, setAuthorized] = useState(false);
+  const [checking, setChecking] = useState(true);
   const navigate = useNavigate();
   const location = useLocation();
 
-  useEffect(() => {
-    const handleKeyDown = (event) => {
-      if (event.key === "Enter") {
-        const currentIndex = pageSequence.indexOf(location.pathname);
+  const verifySession = useCallback(async () => {
+    document.documentElement.classList.add("session-checking");
+    setChecking(true);
 
-        // If we are on one of the sequence pages and not yet at the last page
-        if (currentIndex !== -1 && currentIndex < pageSequence.length - 1) {
-          // Prevents form submit reloads from blocking the page transition
-          event.preventDefault();
-          navigate(pageSequence[currentIndex + 1]);
-        }
+    const storedUser = parseStoredUser(localStorage.getItem("user"));
+    if (!storedUser || typeof storedUser.role !== "string") {
+      clearClientSession();
+      setAuthorized(false);
+      navigate("/login", { replace: true });
+      setChecking(false);
+      document.documentElement.classList.remove("session-checking");
+      return;
+    }
+
+    try {
+      const session = await apiRequest("/auth/session");
+      const sessionRole = session?.user?.role?.toLowerCase();
+      if (!session?.authenticated || !ROLE_PATHS[sessionRole]) {
+        throw new Error("The server returned an invalid session.");
       }
+
+      if (sessionRole !== role) {
+        setAuthorized(false);
+        navigate(ROLE_PATHS[sessionRole], { replace: true });
+        return;
+      }
+
+      setAuthorized(true);
+    } catch {
+      clearClientSession();
+      setAuthorized(false);
+      navigate("/login", { replace: true });
+    } finally {
+      setChecking(false);
+      document.documentElement.classList.remove("session-checking");
+    }
+  }, [navigate, role]);
+
+  useEffect(() => {
+    const initialCheck = window.setTimeout(() => {
+      void verifySession();
+    }, 0);
+
+    const handleHistoryRestore = () => {
+      void verifySession();
+    };
+    const handlePageShow = (event) => {
+      if (event.persisted) handleHistoryRestore();
+    };
+    const handleSessionEnded = () => {
+      setAuthorized(false);
+      navigate("/login", { replace: true });
     };
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [location.pathname, navigate]);
+    window.addEventListener("pageshow", handlePageShow);
+    window.addEventListener("popstate", handleHistoryRestore);
+    window.addEventListener("uniflow:session-ended", handleSessionEnded);
+    return () => {
+      window.clearTimeout(initialCheck);
+      window.removeEventListener("pageshow", handlePageShow);
+      window.removeEventListener("popstate", handleHistoryRestore);
+      window.removeEventListener("uniflow:session-ended", handleSessionEnded);
+    };
+  }, [location.pathname, navigate, verifySession]);
 
-  return null;
-}
-
-// Guided Step-by-Step Flow Bar (shown across dashboards)
-function StepProgressHeader() {
-  const location = useLocation();
-  const currentPath = location.pathname;
-
-  // Don't show step wizard on Landing or Login
-  if (currentPath === "/" || currentPath === "/login") return null;
-
-  const steps = [
-    { name: "1. Admin Portal", path: "/admin" },
-    { name: "2. Faculty Portal", path: "/faculty" },
-    { name: "3. Student Portal", path: "/student" },
-  ];
-
-  return (
-    <header className="bg-slate-900 border-b border-slate-800 px-6 py-3.5 flex items-center justify-between sticky top-0 z-50">
-      <div className="flex items-center gap-3">
-        <Link
-          to="/"
-          className="text-xs uppercase font-mono tracking-wider text-slate-400 hover:text-white transition"
-        >
-          ← Back to Home
-        </Link>
-        <span className="text-slate-700">|</span>
-        <span className="font-bold text-sm text-indigo-400">
-          Campus Demo Flow
-        </span>
+  if (checking || !authorized) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-sm text-slate-400">
+        Verifying your session…
       </div>
+    );
+  }
 
-      <div className="flex items-center gap-2">
-        {steps.map((s) => {
-          const active = currentPath === s.path;
-          return (
-            <Link
-              key={s.path}
-              to={s.path}
-              className={`px-3 py-1 rounded-lg text-xs font-semibold transition ${
-                active
-                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-900/50"
-                  : "bg-slate-800/80 text-slate-400 hover:text-slate-200 hover:bg-slate-800"
-              }`}
-            >
-              {s.name}
-            </Link>
-          );
-        })}
-      </div>
-    </header>
-  );
+  return children;
 }
 
 export default function App() {
+  useEffect(() => {
+    localStorage.removeItem("token");
+  }, []);
+
   return (
     <BrowserRouter>
-      {/* Listens for Enter and handles transitions */}
-      <EnterKeyNavigator />
-
       <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
-        <StepProgressHeader />
         <main className="flex-1">
           <Routes>
-            {/* 1. Landing Page initially */}
             <Route path="/" element={<LandingPage />} />
-
-            {/* 2. Login Page next */}
             <Route path="/login" element={<Login />} />
-
-            {/* 3. Admin Dashboard next */}
-            <Route path="/admin" element={<AdminDashboard />} />
-
-            {/* 4. Faculty Dashboard next */}
-            <Route path="/faculty" element={<FacultyDashboard />} />
-
-            {/* 5. Student Dashboard next */}
-            <Route path="/student" element={<StudentDashboard />} />
-
-            {/* Fallback to landing */}
+            <Route
+              path="/admin"
+              element={
+                <ProtectedPortal role="admin">
+                  <AdminDashboard />
+                </ProtectedPortal>
+              }
+            />
+            <Route
+              path="/faculty"
+              element={
+                <ProtectedPortal role="faculty">
+                  <FacultyDashboard />
+                </ProtectedPortal>
+              }
+            />
+            <Route
+              path="/student"
+              element={
+                <ProtectedPortal role="student">
+                  <StudentDashboard />
+                </ProtectedPortal>
+              }
+            />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>

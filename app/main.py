@@ -1,180 +1,112 @@
-from fastapi import FastAPI, HTTPException
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import Dict, Any, List, Optional
-import uvicorn
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
-app = FastAPI(title="Campus Unified API", version="2.0.0")
+from app.config import get_settings
+from app.database.session import dispose_database, get_engine
+from app.models import Base
+from app.routes.api import api_router
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+TENANT_TABLES = (
+    "departments",
+    "users",
+    "courses",
+    "classes",
+    "enrollments",
+    "course_materials",
+    "attendance_records",
+    "audit_logs",
+    "portal_dashboards",
+    "class_meetings",
+    "notices",
+    "test_assessments",
+    "student_marks",
+    "academic_calendar_entries",
+    "faculty_attendance",
 )
 
-# ============================================================================
-# IN-MEMORY DATA STORAGE
-# ============================================================================
 
-FACULTY_DATA: Dict[str, Any] = {
-    "instructor": {
-        "name": "Dr. Professor",
-        "department": "Computer Science & Engineering",
-        "designation": "Associate Professor",
-        "office": "Academic Block B, Room 312"
-    },
-    "stats": {
-        "lectures_remaining": "2 remaining",
-        "avg_attendance": "92.6%",
-        "student_inquiries": "5 Pending"
-    },
-    "lectures_today": [
-        {
-            "id": 1,
-            "time": "09:00 AM - 10:30 AM",
-            "room": "Lab 3",
-            "course": "Data Structures & Algorithms",
-            "section": "CS-3A",
-            "students_count": "52 Students",
-            "status": "Attendance Submitted"
-        },
-        {
-            "id": 2,
-            "time": "11:00 AM - 12:30 PM",
-            "room": "Hall 204",
-            "course": "Database Management Systems",
-            "section": "CS-5B",
-            "students_count": "58 Students",
-            "status": "Pending"
-        },
-        {
-            "id": 3,
-            "time": "02:00 PM - 03:30 PM",
-            "room": "Hall 101",
-            "course": "Operating Systems",
-            "section": "IT-3A",
-            "students_count": "45 Students",
-            "status": "Attendance Submitted"
-        }
-    ],
-    "advisory_notices": [
-        {"id": 1, "title": "Mid-term question paper moderation deadline", "due": "Oct 15, 2026"},
-        {"id": 2, "title": "Internal lab assessment grading due", "due": "Oct 24, 2026"}
-    ]
-}
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    engine = get_engine()
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+        await connection.execute(
+            text(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS "
+                "auth_version INTEGER NOT NULL DEFAULT 0"
+            )
+        )
+        for table_name in TENANT_TABLES:
+            await connection.execute(
+                text(f"ALTER TABLE {table_name} ENABLE ROW LEVEL SECURITY")
+            )
+            await connection.execute(
+                text(f"ALTER TABLE {table_name} FORCE ROW LEVEL SECURITY")
+            )
+            policy_exists = await connection.scalar(
+                text(
+                    "SELECT EXISTS (SELECT 1 FROM pg_policies "
+                    "WHERE schemaname = current_schema() AND tablename = :table_name "
+                    "AND policyname = 'uniflow_tenant_policy')"
+                ),
+                {"table_name": table_name},
+            )
+            if not policy_exists:
+                await connection.execute(
+                    text(
+                        f"CREATE POLICY uniflow_tenant_policy ON {table_name} "
+                        "USING (college_id = NULLIF("
+                        "current_setting('app.current_tenant_id', true), '')::uuid) "
+                        "WITH CHECK (college_id = NULLIF("
+                        "current_setting('app.current_tenant_id', true), '')::uuid)"
+                    )
+                )
+    yield
+    await dispose_database()
 
-ADMIN_DATA: Dict[str, Any] = {
-    "institution": {
-        "name": "Institute of Technology & Science",
-        "term": "Fall 2026",
-        "system_status": "Operational & Synced"
-    },
-    "stats": {
-        "total_students": 3420,
-        "total_faculty": 184,
-        "overall_campus_occupancy": "87.4%",
-        "pending_administrative_approvals": 12
-    },
-    "departments": [
-        {"code": "CSE", "name": "Computer Science & Engineering", "students": 840, "faculty": 36},
-        {"code": "ECE", "name": "Electronics & Communication", "students": 720, "faculty": 32},
-        {"code": "MECH", "name": "Mechanical Engineering", "students": 610, "faculty": 28},
-        {"code": "IT", "name": "Information Technology", "students": 550, "faculty": 24}
-    ]
-}
 
-STUDENT_DATA: Dict[str, Any] = {
-    "student_profile": {
-        "name": "Enrolled Student",
-        "program": "B.Tech Computer Science",
-        "semester": "Semester 5",
-        "enrollment_status": "Active Enrolled",
-        "advisory_batch": "2024 - 2028"
-    },
-    "academic_progress": {
-        "cgpa": 8.82,
-        "cgpa_scale": 10.0,
-        "sgpa_current": 9.10,
-        "standing": "Dean's List"
-    },
-    "courses": [
-        {"code": "CS501", "name": "Database Management Systems", "credits": 4, "attendance": "94%", "ia1": 28, "ia2": 29, "max_ia": 30},
-        {"code": "CS502", "name": "Operating Systems", "credits": 4, "attendance": "91%", "ia1": 27, "ia2": 26, "max_ia": 30},
-        {"code": "CS503", "name": "Computer Networks", "credits": 3, "attendance": "89%", "ia1": 25, "ia2": 28, "max_ia": 30},
-        {"code": "CS504", "name": "Theory of Computation", "credits": 3, "attendance": "96%", "ia1": 30, "ia2": 29, "max_ia": 30}
-    ],
-    "notice_board": [
-        {"id": 1, "author": "Academic Dean", "title": "Mid-Term Examination Seating Plan", "date": "Oct 14, 2026", "badge": "Important"},
-        {"id": 2, "author": "Hostel Affairs", "title": "Diwali Vacation Hostel Access Verification", "date": "Oct 20, 2026", "badge": "Campus"}
-    ]
-}
+app = FastAPI(title="UniFlow API", version="1.0.0", lifespan=lifespan)
+allowed_origins = [
+    origin.strip()
+    for origin in get_settings().frontend_origins.split(",")
+    if origin.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["Content-Type"],
+)
+app.include_router(api_router)
 
-# ============================================================================
-# FACULTY ENDPOINTS
-# ============================================================================
 
-@app.get("/api/faculty/dashboard")
-def get_faculty():
-    return FACULTY_DATA
+@app.middleware("http")
+async def protect_api_requests(request: Request, call_next):
+    is_api_request = request.url.path.startswith("/api/v1/")
+    is_mutating_request = request.method not in {"GET", "HEAD", "OPTIONS"}
+    if is_api_request and is_mutating_request:
+        origin = request.headers.get("origin")
+        if origin not in allowed_origins:
+            return JSONResponse(
+                {"detail": "A valid request origin is required."},
+                status_code=403,
+                headers={"Cache-Control": "no-store"},
+            )
 
-@app.put("/api/faculty/dashboard")
-def update_faculty(payload: Dict[str, Any]):
-    global FACULTY_DATA
-    FACULTY_DATA.update(payload)
-    return {"status": "success", "data": FACULTY_DATA}
+    response = await call_next(request)
+    if is_api_request:
+        response.headers["Cache-Control"] = "no-store, private, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
 
-@app.put("/api/faculty/lectures/{lecture_id}")
-def update_lecture(lecture_id: int, payload: Dict[str, Any]):
-    global FACULTY_DATA
-    for idx, lec in enumerate(FACULTY_DATA["lectures_today"]):
-        if lec["id"] == lecture_id:
-            FACULTY_DATA["lectures_today"][idx].update(payload)
-            return {"status": "success", "lecture": FACULTY_DATA["lectures_today"][idx]}
-    raise HTTPException(status_code=404, detail="Lecture not found")
 
-# ============================================================================
-# ADMIN ENDPOINTS
-# ============================================================================
-
-@app.get("/api/admin/dashboard")
-def get_admin():
-    return ADMIN_DATA
-
-@app.put("/api/admin/dashboard")
-def update_admin(payload: Dict[str, Any]):
-    global ADMIN_DATA
-    ADMIN_DATA.update(payload)
-    return {"status": "success", "data": ADMIN_DATA}
-
-# ============================================================================
-# STUDENT ENDPOINTS
-# ============================================================================
-
-@app.get("/api/student/dashboard")
-def get_student():
-    return STUDENT_DATA
-
-@app.put("/api/student/dashboard")
-def update_student(payload: Dict[str, Any]):
-    global STUDENT_DATA
-    STUDENT_DATA.update(payload)
-    return {"status": "success", "data": STUDENT_DATA}
-
-@app.post("/api/student/notices")
-def add_student_notice(payload: Dict[str, Any]):
-    global STUDENT_DATA
-    new_id = len(STUDENT_DATA["notice_board"]) + 1
-    notice = {
-        "id": new_id,
-        "author": payload.get("author", "Student Council"),
-        "title": payload.get("title", "Announcement"),
-        "date": payload.get("date", "Today"),
-        "badge": payload.get("badge", "General")
-    }
-    STUDENT_DATA["notice_board"].insert(0, notice)
-    return {"status": "success", "notices": STUDENT_DATA["notice_board"]}
-
-if __name__ == "__main__":
-    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+@app.get("/health")
+async def health() -> dict[str, str]:
+    return {"status": "ok"}

@@ -16,16 +16,16 @@ class AuthenticatedPrincipal(BaseModel):
     user_id: UUID
     college_id: UUID
     role: UserRole
+    auth_version: int = 0
 
 
 async def get_current_principal(request: Request) -> AuthenticatedPrincipal:
     principal = getattr(request.state, "uniflow_principal", None)
-    if not isinstance(principal, AuthenticatedPrincipal):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authenticated UniFlow user context is required.",
-        )
-    return principal
+    if isinstance(principal, AuthenticatedPrincipal):
+        return principal
+    from app.security import principal_from_request
+
+    return await principal_from_request(request)
 
 
 def require_role(required_role: UserRole):
