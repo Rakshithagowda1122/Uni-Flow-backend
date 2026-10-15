@@ -1,10 +1,25 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { apiRequest } from "../api/client.js";
+import { apiRequest, checkApiHealth } from "../api/client.js";
 
 export default function Login() {
   const navigate = useNavigate();
+  const [apiStatus, setApiStatus] = useState("CHECKING");
+
+  useEffect(() => {
+    let active = true;
+    checkApiHealth()
+      .then(() => {
+        if (active) setApiStatus("API + DB ONLINE");
+      })
+      .catch(() => {
+        if (active) setApiStatus("API OFFLINE");
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Form State
   const [selectedRole, setSelectedRole] = useState("admin");
@@ -95,14 +110,7 @@ export default function Login() {
       localStorage.removeItem("user");
       setScanSuccess(false);
 
-      // Strict failure notice: never fall back to mock data
-      const failedMessage =
-        error.message?.includes("Failed to fetch") ||
-        error.message?.includes("NetworkError")
-          ? "Backend is offline. Ensure FastAPI is running on port 8000."
-          : error.message || "Authentication failed. Invalid credentials.";
-
-      setErrorMessage(failedMessage);
+      setErrorMessage(error.message || "Authentication failed.");
     } finally {
       setIsScanning(false);
     }
@@ -142,8 +150,16 @@ export default function Login() {
                 </p>
               </div>
               <div className="text-right font-mono">
-                <span className="text-[10px] block text-emerald-400 font-semibold">
-                  FASTAPI 8000 LIVE
+                <span
+                  className={`text-[10px] block font-semibold ${
+                    apiStatus === "API + DB ONLINE"
+                      ? "text-emerald-400"
+                      : apiStatus === "CHECKING"
+                        ? "text-amber-400"
+                        : "text-rose-400"
+                  }`}
+                >
+                  {apiStatus}
                 </span>
                 <span className="text-[10px] text-slate-500">
                   AUTH V1 SECURE
@@ -305,7 +321,7 @@ export default function Login() {
 
           <div className="flex justify-between text-[10px] font-mono text-slate-600 mt-4 border-t border-slate-800 pt-2">
             <span>FastAPI: /api/v1/auth/login</span>
-            <span>PostgreSQL: Live Verification</span>
+            <span>Database status: {apiStatus}</span>
           </div>
         </div>
 

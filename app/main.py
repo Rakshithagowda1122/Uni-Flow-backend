@@ -109,4 +109,6 @@ async def protect_api_requests(request: Request, call_next):
 
 @app.get("/health")
 async def health() -> dict[str, str]:
+    async with get_engine().connect() as connection:
+        await connection.execute(text("SELECT 1"))
     return {"status": "ok"}

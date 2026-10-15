@@ -1,7 +1,9 @@
 const API_BASE_URL = (
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api/v1"
+  import.meta.env.PROD
+    ? "/api/v1"
+    : import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api/v1"
 ).replace(/\/+$/, "");
-const apiBaseUrl = new URL(API_BASE_URL);
+const apiBaseUrl = new URL(API_BASE_URL, "http://localhost");
 
 if (apiBaseUrl.port === "3000") {
   throw new Error(
@@ -14,6 +16,30 @@ export function clearClientSession() {
   window.localStorage.removeItem("token");
   window.localStorage.removeItem("user");
   window.dispatchEvent(new Event("uniflow:session-ended"));
+}
+
+export async function checkApiHealth() {
+  const healthUrl = API_BASE_URL.startsWith("/")
+    ? "/api/health"
+    : `${API_BASE_URL.replace(/\/api\/v1$/, "")}/health`;
+
+  let response;
+  try {
+    response = await fetch(healthUrl, {
+      credentials: "include",
+      cache: "no-store",
+    });
+  } catch {
+    throw new Error(
+      "Cannot reach the API service. Confirm the backend is deployed and Vercel's API_BASE_URL is configured.",
+    );
+  }
+
+  if (!response.ok) {
+    throw new Error(`API health check failed with status ${response.status}.`);
+  }
+
+  return response.json();
 }
 
 export async function apiRequest(endpoint, options = {}) {
@@ -41,7 +67,7 @@ export async function apiRequest(endpoint, options = {}) {
     });
   } catch {
     throw new Error(
-      "Cannot connect to server. Ensure FastAPI backend is running on port 8000.",
+      "Cannot reach the UniFlow API service. Check the backend deployment and API_BASE_URL configuration.",
     );
   }
 

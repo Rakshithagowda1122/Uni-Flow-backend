@@ -80,12 +80,29 @@ Create or update the Vercel project with `frontend` as its Root Directory. Use
 `frontend/vercel.json` rewrites application routes such as `/login` to the Vite
 entry point so they load correctly when opened directly or refreshed.
 
-Set `VITE_API_BASE_URL` in the Vercel project's Production environment to the
-public URL of the deployed FastAPI service, ending in `/api/v1` (for example,
-`https://api.example.com/api/v1`), then redeploy. Do not set it to the Supabase
-database URL: this frontend calls FastAPI, while FastAPI connects to PostgreSQL.
-Deploy the FastAPI service separately and set its `FRONTEND_ORIGINS` to the
-exact Vercel site origin (for example, `https://uni-flow-frontend-nine.vercel.app`).
+The frontend routes `/api/v1` requests through a same-origin Vercel function;
+this keeps the authentication cookie on the Vercel site while the function
+forwards requests to FastAPI. In Vercel Production, set the server-only
+`API_BASE_URL` environment variable to the HTTPS origin of the deployed FastAPI
+service (for example, `https://uniflow-api.onrender.com`), then redeploy. Do
+not set it to the Supabase database URL: the frontend calls FastAPI, and FastAPI
+connects to PostgreSQL.
+
+To deploy FastAPI on Render, create a Blueprint from this repository using
+`render.yaml`. Set its `DATABASE_URL` to the Supabase Session Pooler connection
+URL, using the `postgresql+asyncpg://` scheme required by this backend and
+preserving Supabase's TLS requirement (`ssl=require` for asyncpg). URL-encode
+special characters in the database username or password. Set
+`FRONTEND_ORIGINS` to the exact Vercel site origin; update the value in
+`render.yaml` if the Vercel domain changes. Render generates `TOKEN_SECRET`
+automatically. The Render `/health` check verifies the database connection as
+well as API availability.
+
+If the Supabase database does not already contain campus and user records, set
+a private `SEED_PASSWORD` in Render and run `python seed_db.py` from the
+service's Shell after deployment. The seeded accounts use that password. The
+login page reports whether both FastAPI and PostgreSQL are reachable; it does
+not claim they are online before checking them.
 
 ## Authentication and tenant isolation
 

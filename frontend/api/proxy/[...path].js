@@ -1,0 +1,133 @@
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
+
+const ALLOWED_METHODS = new Set([
+  "GET",
+  "HEAD",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+  "OPTIONS",
+]);
+
+async function readRequestBody(request) {
+  const chunks = [];
+  for await (const chunk of request) {
+    chunks.push(Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks);
+}
+
+function respondWithError(response, status, detail) {
+  response.statusCode = status;
+  response.setHeader("Content-Type", "application/json; charset=utf-8");
+  response.setHeader("Cache-Control", "no-store");
+  response.end(JSON.stringify({ detail }));
+}
+
+export default async function handler(request, response) {
+  if (!ALLOWED_METHODS.has(request.method)) {
+    response.setHeader("Allow", [...ALLOWED_METHODS].join(", "));
+    respondWithError(response, 405, "This API request method is not supported.");
+    return;
+  }
+
+  const backendOrigin = process.env.API_BASE_URL;
+  if (!backendOrigin) {
+    respondWithError(
+      response,
+      503,
+      "The API proxy is not configured. Set API_BASE_URL in the Vercel project and redeploy.",
+    );
+    return;
+  }
+
+  let backend;
+  try {
+    backend = new URL(backendOrigin);
+  } catch {
+    respondWithError(response, 500, "The API proxy URL is invalid.");
+    return;
+  }
+
+  if (
+    backend.protocol !== "https:" ||
+    backend.username ||
+    backend.password ||
+    backend.pathname !== "/" ||
+    backend.search ||
+    backend.hash
+  ) {
+    respondWithError(
+      response,
+      500,
+      "API_BASE_URL must be an HTTPS backend origin without credentials or a path.",
+    );
+    return;
+  }
+
+  const routeParts = Array.isArray(request.query.path)
+    ? request.query.path
+    : [request.query.path].filter(Boolean);
+  const isHealthCheck = routeParts.length === 1 && routeParts[0] === "health";
+  const isApiRoute = routeParts[0] === "v1" && routeParts.length > 1;
+  if (!isHealthCheck && !isApiRoute) {
+    respondWithError(response, 404, "The requested API route does not exist.");
+    return;
+  }
+
+  const upstreamPath = isHealthCheck
+    ? "/health"
+    : `/api/${routeParts.join("/")}`;
+  const upstreamHeaders = new Headers();
+  for (const name of ["accept", "content-type", "cookie", "origin"]) {
+    const value = request.headers[name];
+    if (typeof value === "string") upstreamHeaders.set(name, value);
+  }
+
+  try {
+    const body =
+      request.method === "GET" || request.method === "HEAD"
+        ? undefined
+        : await readRequestBody(request);
+    const queryStart = request.url.indexOf("?");
+    const query = queryStart === -1 ? "" : request.url.slice(queryStart);
+    const upstream = await fetch(
+      new URL(`${upstreamPath}${query}`, backend.origin),
+      {
+        method: request.method,
+        headers: upstreamHeaders,
+        body,
+        redirect: "manual",
+        signal: AbortSignal.timeout(25_000),
+      },
+    );
+
+    response.statusCode = upstream.status;
+    for (const name of ["cache-control", "content-type", "location"]) {
+      const value = upstream.headers.get(name);
+      if (value) response.setHeader(name, value);
+    }
+
+    const cookies = upstream.headers.getSetCookie?.() ?? [];
+    if (cookies.length) response.setHeader("Set-Cookie", cookies);
+
+    if (request.method === "HEAD" || upstream.status === 204) {
+      response.end();
+      return;
+    }
+
+    response.end(Buffer.from(await upstream.arrayBuffer()));
+  } catch (error) {
+    console.error("UniFlow API proxy request failed.", error);
+    respondWithError(
+      response,
+      502,
+      "The API service could not be reached. Check the backend deployment and its logs.",
+    );
+  }
+}
