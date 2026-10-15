@@ -73,6 +73,20 @@ non-superuser account, configure `DATABASE_URL` and `TOKEN_SECRET`, then run
 configuration that targets the frontend port 3000. `NEXT_PUBLIC_API_URL` is a
 Next.js-specific variable and is not used by this Vite application.
 
+## Deploy the frontend to Vercel
+
+Create or update the Vercel project with `frontend` as its Root Directory. Use
+`npm run build` as the build command and `dist` as the output directory.
+`frontend/vercel.json` rewrites application routes such as `/login` to the Vite
+entry point so they load correctly when opened directly or refreshed.
+
+Set `VITE_API_BASE_URL` in the Vercel project's Production environment to the
+public URL of the deployed FastAPI service, ending in `/api/v1` (for example,
+`https://api.example.com/api/v1`), then redeploy. Do not set it to the Supabase
+database URL: this frontend calls FastAPI, while FastAPI connects to PostgreSQL.
+Deploy the FastAPI service separately and set its `FRONTEND_ORIGINS` to the
+exact Vercel site origin (for example, `https://uni-flow-frontend-nine.vercel.app`).
+
 ## Authentication and tenant isolation
 
 `POST /api/v1/auth/login` accepts `email`, `password`, `role` (`ADMIN`,
