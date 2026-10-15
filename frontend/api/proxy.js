@@ -11,7 +11,6 @@ const ALLOWED_METHODS = new Set([
   "PUT",
   "PATCH",
   "DELETE",
-  "OPTIONS",
 ]);
 
 async function readRequestBody(request) {
@@ -70,9 +69,9 @@ export default async function handler(request, response) {
     return;
   }
 
-  const routeParts = Array.isArray(request.query.path)
-    ? request.query.path
-    : [request.query.path].filter(Boolean);
+  const requestUrl = new URL(request.url, "https://vercel.invalid");
+  const routePath = requestUrl.searchParams.get("path") || "";
+  const routeParts = routePath.split("/").filter(Boolean);
   const isHealthCheck = routeParts.length === 1 && routeParts[0] === "health";
   const isApiRoute = routeParts[0] === "v1" && routeParts.length > 1;
   if (!isHealthCheck && !isApiRoute) {
@@ -83,6 +82,10 @@ export default async function handler(request, response) {
   const upstreamPath = isHealthCheck
     ? "/health"
     : `/api/${routeParts.join("/")}`;
+  requestUrl.searchParams.delete("path");
+  const upstreamUrl = new URL(upstreamPath, backend.origin);
+  upstreamUrl.search = requestUrl.searchParams.toString();
+
   const upstreamHeaders = new Headers();
   for (const name of ["accept", "content-type", "cookie", "origin"]) {
     const value = request.headers[name];
@@ -94,18 +97,13 @@ export default async function handler(request, response) {
       request.method === "GET" || request.method === "HEAD"
         ? undefined
         : await readRequestBody(request);
-    const queryStart = request.url.indexOf("?");
-    const query = queryStart === -1 ? "" : request.url.slice(queryStart);
-    const upstream = await fetch(
-      new URL(`${upstreamPath}${query}`, backend.origin),
-      {
-        method: request.method,
-        headers: upstreamHeaders,
-        body,
-        redirect: "manual",
-        signal: AbortSignal.timeout(25_000),
-      },
-    );
+    const upstream = await fetch(upstreamUrl, {
+      method: request.method,
+      headers: upstreamHeaders,
+      body,
+      redirect: "manual",
+      signal: AbortSignal.timeout(25_000),
+    });
 
     response.statusCode = upstream.status;
     for (const name of ["cache-control", "content-type", "location"]) {
