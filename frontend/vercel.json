@@ -1,15 +1,19 @@
 {
   "rewrites": [
     {
-      "source": "/api/v1/:path*",
-      "destination": "/api/proxy/v1/:path*"
+      "source": "/login",
+      "destination": "/index.html"
     },
     {
-      "source": "/api/health",
-      "destination": "/api/proxy/health"
+      "source": "/admin",
+      "destination": "/index.html"
     },
     {
-      "source": "/(.*)",
+      "source": "/faculty",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/student",
       "destination": "/index.html"
     }
   ]
