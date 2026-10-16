@@ -4,7 +4,6 @@ import {
   Navigate,
   Route,
   Routes,
-  useLocation,
   useNavigate,
 } from "react-router-dom";
 import { apiRequest, clearClientSession } from "./api/client.js";
@@ -32,7 +31,6 @@ function ProtectedPortal({ role, children }) {
   const [authorized, setAuthorized] = useState(false);
   const [checking, setChecking] = useState(true);
   const navigate = useNavigate();
-  const location = useLocation();
 
   const verifySession = useCallback(async () => {
     document.documentElement.classList.add("session-checking");
@@ -78,10 +76,19 @@ function ProtectedPortal({ role, children }) {
     }, 0);
 
     const handleHistoryRestore = () => {
+      document.documentElement.classList.add("session-checking");
       void verifySession();
     };
     const handlePageShow = (event) => {
       if (event.persisted) handleHistoryRestore();
+    };
+    const handlePageHide = () => {
+      document.documentElement.classList.add("session-checking");
+    };
+    const handleStorage = (event) => {
+      if (event.key === "user" && event.newValue === null) {
+        handleSessionEnded();
+      }
     };
     const handleSessionEnded = () => {
       setAuthorized(false);
@@ -89,15 +96,19 @@ function ProtectedPortal({ role, children }) {
     };
 
     window.addEventListener("pageshow", handlePageShow);
+    window.addEventListener("pagehide", handlePageHide);
     window.addEventListener("popstate", handleHistoryRestore);
+    window.addEventListener("storage", handleStorage);
     window.addEventListener("uniflow:session-ended", handleSessionEnded);
     return () => {
       window.clearTimeout(initialCheck);
       window.removeEventListener("pageshow", handlePageShow);
+      window.removeEventListener("pagehide", handlePageHide);
       window.removeEventListener("popstate", handleHistoryRestore);
+      window.removeEventListener("storage", handleStorage);
       window.removeEventListener("uniflow:session-ended", handleSessionEnded);
     };
-  }, [location.pathname, navigate, verifySession]);
+  }, [navigate, role, verifySession]);
 
   if (checking || !authorized) {
     return (
