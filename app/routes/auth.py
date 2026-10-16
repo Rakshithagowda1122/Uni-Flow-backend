@@ -138,6 +138,10 @@ async def logout(
         async with session_factory() as session:
             async with session.begin():
                 await session.execute(
+                    text("SELECT set_config('app.current_tenant_id', :tenant_id, true)"),
+                    {"tenant_id": str(principal.college_id)},
+                )
+                await session.execute(
                     update(User)
                     .where(
                         User.id == principal.user_id,
