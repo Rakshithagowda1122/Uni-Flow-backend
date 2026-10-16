@@ -1,21 +1,25 @@
 import time
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select, text, update
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import func
 
 from app.config import get_settings
-from app.database.session import get_session_factory, get_tenant_session
+from app.database.session import get_session_factory
 from app.dependencies.auth import (
     AuthenticatedPrincipal,
     UserRole,
     get_current_principal,
 )
 from app.models import College, User
-from app.security import SESSION_COOKIE_NAME, create_access_token, verify_password
+from app.security import (
+    SESSION_COOKIE_NAME,
+    create_access_token,
+    principal_from_request,
+    verify_password,
+)
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -34,7 +38,6 @@ class LoginResponse(BaseModel):
 
 
 CurrentPrincipal = Annotated[AuthenticatedPrincipal, Depends(get_current_principal)]
-TenantSession = Annotated[AsyncSession, Depends(get_tenant_session)]
 
 
 def _cookie_secure() -> bool:
@@ -122,24 +125,28 @@ async def get_session(principal: CurrentPrincipal) -> dict[str, object]:
 
 @router.post("/logout")
 async def logout(
-    principal: CurrentPrincipal,
-    session: TenantSession,
+    request: Request,
     response: Response,
 ) -> dict[str, str]:
-    result = await session.execute(
-        update(User)
-        .where(
-            User.id == principal.user_id,
-            User.college_id == principal.college_id,
-            User.auth_version == principal.auth_version,
-        )
-        .values(auth_version=User.auth_version + 1)
-    )
-    if result.rowcount != 1:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="The session is no longer valid.",
-        )
+    try:
+        principal = await principal_from_request(request)
+    except HTTPException as error:
+        if error.status_code != status.HTTP_401_UNAUTHORIZED:
+            raise
+    else:
+        session_factory = get_session_factory()
+        async with session_factory() as session:
+            async with session.begin():
+                await session.execute(
+                    update(User)
+                    .where(
+                        User.id == principal.user_id,
+                        User.college_id == principal.college_id,
+                        User.auth_version == principal.auth_version,
+                    )
+                    .values(auth_version=User.auth_version + 1)
+                )
+
     response.delete_cookie(
         key=SESSION_COOKIE_NAME,
         path="/",
