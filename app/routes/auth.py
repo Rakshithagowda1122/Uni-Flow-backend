@@ -46,70 +46,78 @@ def _cookie_secure() -> bool:
 
 @router.post("/login", response_model=LoginResponse)
 async def login(payload: LoginRequest, response: Response) -> LoginResponse:
-    session_factory = get_session_factory()
-    async with session_factory() as session:
-        async with session.begin():
-            college = await session.scalar(
-                select(College).where(
-                    College.slug == payload.college_slug,
-                    College.status == "active",
+    try:
+        session_factory = get_session_factory()
+        async with session_factory() as session:
+            async with session.begin():
+                college = await session.scalar(
+                    select(College).where(
+                        College.slug == payload.college_slug,
+                        College.status == "active",
+                    )
                 )
-            )
-            if college is None:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Invalid email, password, role, or campus.",
-                )
+                if college is None:
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Invalid email, password, role, or campus.",
+                    )
 
-            await session.execute(
-                text("SELECT set_config('app.current_tenant_id', :tenant_id, true)"),
-                {"tenant_id": str(college.id)},
-            )
-            user = await session.scalar(
-                select(User).where(
-                    User.college_id == college.id,
-                    User.email == payload.email.lower(),
-                    User.role == payload.role.value,
-                    User.status == "active",
+                await session.execute(
+                    text("SELECT set_config('app.current_tenant_id', :tenant_id, true)"),
+                    {"tenant_id": str(college.id)},
                 )
-            )
-            if user is None or not verify_password(payload.password, user.password_hash):
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Invalid email, password, role, or campus.",
+                user = await session.scalar(
+                    select(User).where(
+                        User.college_id == college.id,
+                        User.email == payload.email.lower(),
+                        User.role == payload.role.value,
+                        User.status == "active",
+                    )
                 )
+                if user is None or not verify_password(payload.password, user.password_hash):
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Invalid email, password, role, or campus.",
+                    )
 
-            await session.execute(
-                update(User)
-                .where(User.id == user.id, User.college_id == college.id)
-                .values(last_login_at=func.clock_timestamp())
-            )
-            principal = AuthenticatedPrincipal(
-                user_id=user.id,
-                college_id=college.id,
-                role=UserRole(user.role),
-                auth_version=user.auth_version,
-            )
-            access_token, expires_at = create_access_token(principal)
-            response.set_cookie(
-                key=SESSION_COOKIE_NAME,
-                value=access_token,
-                max_age=max(0, expires_at - int(time.time())),
-                httponly=True,
-                secure=_cookie_secure(),
-                samesite="lax",
-                path="/",
-            )
-            return LoginResponse(
-                user={
-                    "id": str(user.id),
-                    "name": user.full_name,
-                    "email": user.email,
-                    "role": user.role.lower(),
-                    "college_name": college.name,
-                    "college_slug": college.slug,
-                },
-            )
+                await session.execute(
+                    update(User)
+                    .where(User.id == user.id, User.college_id == college.id)
+                    .values(last_login_at=func.clock_timestamp())
+                )
+                principal = AuthenticatedPrincipal(
+                    user_id=user.id,
+                    college_id=college.id,
+                    role=UserRole(user.role),
+                    auth_version=user.auth_version,
+                )
+                access_token, expires_at = create_access_token(principal)
+                response.set_cookie(
+                    key=SESSION_COOKIE_NAME,
+                    value=access_token,
+                    max_age=max(0, expires_at - int(time.time())),
+                    httponly=True,
+                    secure=_cookie_secure(),
+                    samesite="lax",
+                    path="/",
+                )
+                return LoginResponse(
+                    user={
+                        "id": str(user.id),
+                        "name": user.full_name,
+                        "email": user.email,
+                        "role": user.role.lower(),
+                        "college_name": college.name,
+                        "college_slug": college.slug,
+                    },
+                )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database service connection error. Please verify your Supabase database status.",
+        ) from exc
 
 
 @router.get("/session")
