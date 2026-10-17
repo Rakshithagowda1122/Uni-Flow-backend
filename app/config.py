@@ -1,11 +1,23 @@
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    database_url: str = ""
+    database_url: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "DATABASE_URL",
+            "database_url",
+            "DATABASE_URI",
+            "DB_URL",
+            "POSTGRES_URL",
+            "SUPABASE_DATABASE_URL",
+            "SUPABASE_URL",
+            "POSTGRESQL_URL",
+        ),
+    )
     token_secret: str = Field(
         default="uniflow_super_secret_jwt_key_2026_xyz_production_ready",
         min_length=32,
