@@ -36,15 +36,9 @@ export default async function handler(request, response) {
   }
 
   const rawBackendOrigin =
-    process.env.API_BASE_URL || process.env.VITE_API_BASE_URL;
-  if (!rawBackendOrigin) {
-    respondWithError(
-      response,
-      503,
-      "The API proxy is not configured. Set API_BASE_URL in the Vercel project and redeploy.",
-    );
-    return;
-  }
+    process.env.API_BASE_URL ||
+    process.env.VITE_API_BASE_URL ||
+    "https://uni-flow-backend.onrender.com";
 
   let backend;
   try {
