@@ -86,7 +86,7 @@ allowed_origins = [
 ]
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"^https://.*\.vercel\.app$|^http://localhost(:\d+)?$|^http://127\.0\.0\.1(:\d+)?$",
+    allow_origin_regex=r"^https://.*\.vercel\.app$|^https://.*\.onrender\.com$|^http://localhost(:\d+)?$|^http://127\.0\.0\.1(:\d+)?$",
     allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
@@ -102,7 +102,11 @@ def _is_origin_permitted(origin: str | None) -> bool:
         return True
     try:
         hostname = urlparse(origin).hostname or ""
-        if hostname.endswith(".vercel.app") or hostname in {"localhost", "127.0.0.1"}:
+        if (
+            hostname.endswith(".vercel.app")
+            or hostname.endswith(".onrender.com")
+            or hostname in {"localhost", "127.0.0.1"}
+        ):
             return True
     except Exception:
         pass

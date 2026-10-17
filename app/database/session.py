@@ -18,8 +18,21 @@ from app.dependencies.auth import (
 )
 
 
+import re
+
+
 def normalize_database_url(url: str) -> str:
     raw = url.strip()
+
+    # Automatically map IPv6-only Supabase direct host to IPv4 session pooler (required for Render)
+    match = re.search(r"@db\.([a-z0-9]+)\.supabase\.co(?::\d+)?", raw)
+    if match:
+        ref = match.group(1)
+        pooler_region = "ap-northeast-1"
+        pooler_host = f"aws-0-{pooler_region}.pooler.supabase.com:6543"
+        raw = re.sub(r"@db\.[a-z0-9]+\.supabase\.co(?::\d+)?", f"@{pooler_host}", raw)
+        raw = re.sub(r"(://)postgres(?!\.[a-z0-9]+)(:)", rf"\1postgres.{ref}\2", raw)
+
     if raw.startswith("postgres://"):
         raw = "postgresql+asyncpg://" + raw[len("postgres://"):]
     elif raw.startswith("postgresql://"):
