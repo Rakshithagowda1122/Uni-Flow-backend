@@ -10,8 +10,18 @@ export default function Login() {
   useEffect(() => {
     let active = true;
     checkApiHealth()
-      .then(() => {
-        if (active) setApiStatus("API + DB ONLINE");
+      .then((data) => {
+        if (active) {
+          if (
+            data?.database === "connected" ||
+            data?.database === "ok" ||
+            data?.status === "ok"
+          ) {
+            setApiStatus("API + DB ONLINE");
+          } else {
+            setApiStatus("API ONLINE (DB DEGRADED)");
+          }
+        }
       })
       .catch(() => {
         if (active) setApiStatus("API OFFLINE");

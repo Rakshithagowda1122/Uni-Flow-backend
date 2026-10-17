@@ -47,6 +47,43 @@ COLLEGES = (
     },
 )
 
+DEMO_COURSES = (
+    {
+        "code": "CS201",
+        "title": "DEMO: Data Structures and Algorithms",
+        "credits": 4,
+        "department_code": "CS",
+        "faculty_index": 0,
+        "section": "A",
+        "room": "Computer Lab 2",
+        "day_of_week": 2,
+        "starts_at": time(10, 30),
+        "ends_at": time(12, 0),
+        "material_url": "https://ocw.mit.edu/courses/6-006-introduction-to-algorithms-fall-2011/",
+    },
+    {
+        "code": "EE101",
+        "title": "DEMO: Fundamentals of Electrical Circuits",
+        "credits": 3,
+        "department_code": "EE",
+        "faculty_index": 1,
+        "section": "A",
+        "room": "Engineering Lab 1",
+        "day_of_week": 3,
+        "starts_at": time(13, 0),
+        "ends_at": time(14, 30),
+        "material_url": "https://www.allaboutcircuits.com/textbook/",
+    },
+)
+
+DEMO_MATERIAL_URLS = {
+    "CS101": "https://ocw.mit.edu/courses/6-100l-introduction-to-computer-science-and-programming-using-python-fall-2022/",
+    **{
+        course["code"]: course["material_url"]
+        for course in DEMO_COURSES
+    },
+}
+
 DEPARTMENTS = (
     {"name": "Computer Science", "code": "CS"},
     {"name": "Electrical Engineering", "code": "EE"},
@@ -348,8 +385,8 @@ def seed_demo_dashboard_data(connection, tables, college, college_id, counts):
         text("SELECT set_config('app.current_tenant_id', :tenant_id, true)"),
         {"tenant_id": str(college_id)},
     )
-    class_row = connection.execute(
-        select(tables["classes"].c.id, tables["classes"].c.instructor_id)
+    class_rows = connection.execute(
+        select(tables["classes"].c.id, tables["courses"].c.code)
         .join(
             tables["courses"],
             (tables["courses"].c.id == tables["classes"].c.course_id)
@@ -357,81 +394,88 @@ def seed_demo_dashboard_data(connection, tables, college, college_id, counts):
         )
         .where(
             tables["classes"].c.college_id == college_id,
-            tables["courses"].c.code == "CS101",
+            tables["courses"].c.code.in_(DEMO_MATERIAL_URLS),
         )
-    ).first()
-    if class_row is None:
-        return
-    class_id, faculty_id = class_row
-    student_ids = connection.execute(
-        select(tables["enrollments"].c.student_id)
-        .where(
-            tables["enrollments"].c.college_id == college_id,
-            tables["enrollments"].c.class_id == class_id,
-            tables["enrollments"].c.status == "enrolled",
-        )
-        .order_by(tables["enrollments"].c.student_id)
-    ).scalars().all()
+        .order_by(tables["courses"].c.code, tables["classes"].c.section)
+    ).all()
 
     attendance_statuses = ("present", "present", "late", "present", "absent")
-    for student_index, student_id in enumerate(student_ids):
-        for session_index, attendance_status in enumerate(attendance_statuses):
-            session_date = date.today() - timedelta(days=7 * (session_index + 1))
+    for class_id, course_code in class_rows:
+        student_ids = connection.execute(
+            select(tables["enrollments"].c.student_id)
+            .where(
+                tables["enrollments"].c.college_id == college_id,
+                tables["enrollments"].c.class_id == class_id,
+                tables["enrollments"].c.status == "enrolled",
+            )
+            .order_by(tables["enrollments"].c.student_id)
+        ).scalars().all()
+
+        for student_id in student_ids:
+            for session_index, attendance_status in enumerate(attendance_statuses):
+                session_date = date.today() - timedelta(days=7 * (session_index + 1))
+                get_or_create_record(
+                    connection,
+                    tables["attendance_records"],
+                    {
+                        "college_id": college_id,
+                        "class_id": class_id,
+                        "student_id": student_id,
+                        "session_date": session_date,
+                    },
+                    {"status": attendance_status},
+                    counts,
+                    "demo_attendance",
+                )
+
+        assessment_title = f"DEMO: {course_code} Quiz 1"
+        assessment_id = get_or_create_record(
+            connection,
+            tables["test_assessments"],
+            {
+                "college_id": college_id,
+                "class_id": class_id,
+                "title": assessment_title,
+            },
+            {
+                "max_score": 100,
+                "due_date": date.today() - timedelta(days=3),
+            },
+            counts,
+            "demo_assessment",
+        )
+        for student_index, student_id in enumerate(student_ids):
             get_or_create_record(
                 connection,
-                tables["attendance_records"],
+                tables["student_marks"],
                 {
                     "college_id": college_id,
-                    "class_id": class_id,
+                    "test_id": assessment_id,
                     "student_id": student_id,
-                    "session_date": session_date,
                 },
-                {"status": attendance_status},
+                {"score": 82 + (student_index % 16)},
                 counts,
-                "demo_attendance",
+                "demo_mark",
             )
 
-    assessment_title = "DEMO: CS101 Quiz 1"
-    assessment_id = get_or_create_record(
-        connection,
-        tables["test_assessments"],
-        {
-            "college_id": college_id,
-            "class_id": class_id,
-            "title": assessment_title,
-        },
-        {
-            "max_score": 100,
-            "due_date": date.today() - timedelta(days=3),
-        },
-        counts,
-        "demo_assessment",
-    )
-    for student_index, student_id in enumerate(student_ids):
         get_or_create_record(
             connection,
-            tables["student_marks"],
-            {"college_id": college_id, "test_id": assessment_id, "student_id": student_id},
-            {"score": 82 + (student_index % 16)},
+            tables["course_materials"],
+            {
+                "college_id": college_id,
+                "class_id": class_id,
+                "title": f"DEMO: {course_code} course guide",
+            },
+            {
+                "url": DEMO_MATERIAL_URLS[course_code],
+                "description": (
+                    "Sample course resource link. Replace with your class materials."
+                ),
+            },
             counts,
-            "demo_mark",
+            "demo_material",
         )
 
-    get_or_create_record(
-        connection,
-        tables["course_materials"],
-        {
-            "college_id": college_id,
-            "class_id": class_id,
-            "title": "DEMO: CS101 course guide",
-        },
-        {
-            "url": "https://example.edu/uniflow-demo-course-guide",
-            "description": "Sample course resource link. Replace with your class materials.",
-        },
-        counts,
-        "demo_material",
-    )
     admin_id = get_existing_id(
         connection,
         tables["users"],
@@ -478,6 +522,77 @@ def seed_demo_dashboard_data(connection, tables, college, college_id, counts):
         counts["demo_calendar_reused"] += 1
 
 
+def seed_additional_courses(
+    connection,
+    tables,
+    class_meetings,
+    college_id,
+    department_ids,
+    faculty_ids,
+    student_ids,
+    counts,
+):
+    department_by_code = {
+        department["code"]: department_id
+        for department, department_id in zip(DEPARTMENTS, department_ids)
+    }
+    for course in DEMO_COURSES:
+        course_id = get_or_create_record(
+            connection,
+            tables["courses"],
+            {"college_id": college_id, "code": course["code"]},
+            {
+                "department_id": department_by_code[course["department_code"]],
+                "title": course["title"],
+                "credits": course["credits"],
+            },
+            counts,
+            "course",
+        )
+        class_id = get_or_create_record(
+            connection,
+            tables["classes"],
+            {
+                "college_id": college_id,
+                "course_id": course_id,
+                "term": "Fall 2026",
+                "section": course["section"],
+            },
+            {
+                "instructor_id": faculty_ids[course["faculty_index"]],
+                "room": course["room"],
+            },
+            counts,
+            "class",
+        )
+        for student_id in student_ids[:12]:
+            get_or_create_record(
+                connection,
+                tables["enrollments"],
+                {
+                    "college_id": college_id,
+                    "class_id": class_id,
+                    "student_id": student_id,
+                },
+                {"status": "enrolled"},
+                counts,
+                "enrollment",
+            )
+        get_or_create_record(
+            connection,
+            class_meetings,
+            {
+                "college_id": college_id,
+                "class_id": class_id,
+                "day_of_week": course["day_of_week"],
+                "starts_at": course["starts_at"],
+            },
+            {"ends_at": course["ends_at"]},
+            counts,
+            "class_meeting",
+        )
+
+
 def get_or_create_user(connection, table, college_id, department_id, email, name, role, counts):
     existing_id = get_existing_id(
         connection,
@@ -485,18 +600,12 @@ def get_or_create_user(connection, table, college_id, department_id, email, name
         {"college_id": college_id, "email": email},
     )
     if existing_id is not None:
-        existing = connection.execute(
-            select(table.c.full_name, table.c.role, table.c.department_id).where(
-                table.c.id == existing_id
-            )
-        ).one()
-        if (existing.full_name, existing.role, existing.department_id) != (
-            name,
-            role,
-            department_id,
-        ):
+        existing_role = connection.execute(
+            select(table.c.role).where(table.c.id == existing_id)
+        ).scalar_one()
+        if existing_role != role:
             raise RuntimeError(
-                f"Seed email '{email}' already exists with different user data; "
+                f"Seed email '{email}' already belongs to a {existing_role} account; "
                 "no existing data was changed."
             )
         counts[f"{role.lower()}_reused"] += 1
@@ -700,18 +809,19 @@ def seed_database():
                     counts,
                     "class",
                 )
-                get_or_create_record(
-                    connection,
-                    enrollments,
-                    {
-                        "college_id": college_id,
-                        "class_id": class_id,
-                        "student_id": student_ids[0],
-                    },
-                    {"status": "enrolled"},
-                    counts,
-                    "enrollment",
-                )
+                for student_id in student_ids[:12]:
+                    get_or_create_record(
+                        connection,
+                        enrollments,
+                        {
+                            "college_id": college_id,
+                            "class_id": class_id,
+                            "student_id": student_id,
+                        },
+                        {"status": "enrolled"},
+                        counts,
+                        "enrollment",
+                    )
                 get_or_create_record(
                     connection,
                     class_meetings,
@@ -724,6 +834,16 @@ def seed_database():
                     {"ends_at": time(10, 30)},
                     counts,
                     "class_meeting",
+                )
+                seed_additional_courses(
+                    connection,
+                    tables,
+                    class_meetings,
+                    college_id,
+                    college_departments,
+                    faculty_ids,
+                    student_ids,
+                    counts,
                 )
 
             if custom_student_email and custom_student_password:

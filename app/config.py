@@ -5,11 +5,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    database_url: str
-    token_secret: str = Field(min_length=32)
+    database_url: str = ""
+    token_secret: str = Field(
+        default="uniflow_super_secret_jwt_key_2026_xyz_production_ready",
+        min_length=32,
+    )
     environment: str = "development"
     token_expiry_minutes: int = Field(default=60, gt=0, le=1440)
-    frontend_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+    frontend_origins: str = "http://localhost:3000,http://127.0.0.1:3000,https://uni-flow-frontend-nine.vercel.app"
 
     model_config = SettingsConfigDict(
         env_file=".env",

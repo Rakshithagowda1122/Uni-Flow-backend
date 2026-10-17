@@ -35,8 +35,9 @@ export default async function handler(request, response) {
     return;
   }
 
-  const backendOrigin = process.env.API_BASE_URL;
-  if (!backendOrigin) {
+  const rawBackendOrigin =
+    process.env.API_BASE_URL || process.env.VITE_API_BASE_URL;
+  if (!rawBackendOrigin) {
     respondWithError(
       response,
       503,
@@ -47,27 +48,27 @@ export default async function handler(request, response) {
 
   let backend;
   try {
-    backend = new URL(backendOrigin);
+    const formatted =
+      rawBackendOrigin.startsWith("http://") ||
+      rawBackendOrigin.startsWith("https://")
+        ? rawBackendOrigin
+        : `https://${rawBackendOrigin}`;
+    backend = new URL(formatted);
   } catch {
     respondWithError(response, 500, "The API proxy URL is invalid.");
     return;
   }
 
-  if (
-    backend.protocol !== "https:" ||
-    backend.username ||
-    backend.password ||
-    backend.pathname !== "/" ||
-    backend.search ||
-    backend.hash
-  ) {
+  if (backend.protocol !== "https:" && backend.hostname !== "localhost" && backend.hostname !== "127.0.0.1") {
     respondWithError(
       response,
       500,
-      "API_BASE_URL must be an HTTPS backend origin without credentials or a path.",
+      "API_BASE_URL must be an HTTPS backend origin.",
     );
     return;
   }
+
+  const backendOrigin = backend.origin;
 
   const requestUrl = new URL(request.url, "https://vercel.invalid");
   const routePath = requestUrl.searchParams.get("path") || "";
@@ -83,11 +84,11 @@ export default async function handler(request, response) {
     ? "/health"
     : `/api/${routeParts.join("/")}`;
   requestUrl.searchParams.delete("path");
-  const upstreamUrl = new URL(upstreamPath, backend.origin);
+  const upstreamUrl = new URL(upstreamPath, backendOrigin);
   upstreamUrl.search = requestUrl.searchParams.toString();
 
   const upstreamHeaders = new Headers();
-  for (const name of ["accept", "content-type", "cookie", "origin"]) {
+  for (const name of ["accept", "content-type", "cookie", "origin", "authorization"]) {
     const value = request.headers[name];
     if (typeof value === "string") upstreamHeaders.set(name, value);
   }

@@ -37,13 +37,16 @@ PostgreSQL database.
    `faculty01@northstar.example.edu`, and `student01@northstar.example.edu`;
    `lakeside-polytechnic` uses the same account pattern at
    `lakeside.example.edu`. All seeded accounts use the `SEED_PASSWORD` value.
-   Seeded records intentionally have no default password. Each campus also gets
-   an introductory CS101 class with one enrolled student and a weekly meeting,
-   so the timetable and class-roster flows are ready to try. The seed script
-   also creates idempotent, clearly labeled `DEMO:` assessments, marks,
-   materials, a campus notice, a calendar entry, and sample attendance records.
-   These development records are persisted in PostgreSQL and can be edited from
-   their appropriate role dashboards.
+   Seeded records intentionally have no default password. Each campus gets
+   CS101, CS201, and EE101 weekly classes with sample faculty assignments and
+   student rosters; the first 12 seeded students are enrolled in all three.
+   Five weeks of attendance and quiz marks, course links, a campus notice, and
+   an upcoming calendar entry provide connected data for the admin, faculty,
+   and student dashboards. Sample assessments, materials, and notices are
+   clearly labeled `DEMO:`. The seed script is safe to rerun: it adds missing
+   sample records without resetting existing account passwords or overwriting
+   editable profile and demo-record values. All records are persisted in
+   PostgreSQL and can be edited from their appropriate role dashboards.
 
    To provision or reset one specific student account without changing the
    passwords of the other seeded accounts, set `SEED_STUDENT_EMAIL` and
@@ -114,6 +117,9 @@ JavaScript. `GET /api/v1/auth/session` verifies the session with the backend,
 and `POST /api/v1/auth/logout` revokes it server-side and expires the cookie.
 The frontend checks sessions before rendering protected routes and after
 browser history restoration. Protected API responses are marked `no-store`.
+An unauthenticated `401` from `GET /api/v1/auth/session` while on the login
+screen is expected: it means there is no active session cookie yet. A rejected
+login is a separate `401` response from `POST /api/v1/auth/login`.
 Configure comma-separated trusted frontend origins with `FRONTEND_ORIGINS`;
 unsafe API requests from other origins are rejected.
 

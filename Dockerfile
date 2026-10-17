@@ -8,6 +8,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir --retries 5 --timeout 120 -r requirements.txt
 COPY app ./app
+COPY main.py .
 COPY seed_db.py .
 
 EXPOSE 8000

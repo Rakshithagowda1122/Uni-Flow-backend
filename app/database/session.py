@@ -18,14 +18,35 @@ from app.dependencies.auth import (
 )
 
 
+def normalize_database_url(url: str) -> str:
+    raw = url.strip()
+    if raw.startswith("postgres://"):
+        raw = "postgresql+asyncpg://" + raw[len("postgres://"):]
+    elif raw.startswith("postgresql://"):
+        raw = "postgresql+asyncpg://" + raw[len("postgresql://"):]
+    elif not raw.startswith("postgresql+asyncpg://"):
+        raw = "postgresql+asyncpg://" + raw
+
+    if "sslmode=" in raw:
+        raw = (
+            raw.replace("sslmode=require", "ssl=require")
+            .replace("sslmode=verify-full", "ssl=require")
+            .replace("sslmode=prefer", "ssl=require")
+        )
+    elif ("supabase.co" in raw or "supabase.com" in raw) and "ssl=" not in raw:
+        separator = "&" if "?" in raw else "?"
+        raw = f"{raw}{separator}ssl=require"
+
+    return raw
+
+
 @lru_cache
 def get_engine() -> AsyncEngine:
     settings = get_settings()
-    if not settings.database_url.startswith("postgresql+asyncpg://"):
-        raise ValueError(
-            "DATABASE_URL must use the postgresql+asyncpg:// scheme."
-        )
-    return create_async_engine(settings.database_url, pool_pre_ping=True)
+    if not settings.database_url:
+        raise ValueError("DATABASE_URL environment variable is not configured.")
+    normalized_url = normalize_database_url(settings.database_url)
+    return create_async_engine(normalized_url, pool_pre_ping=True)
 
 
 @lru_cache
