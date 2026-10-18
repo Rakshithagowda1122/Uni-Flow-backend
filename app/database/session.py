@@ -59,7 +59,15 @@ def get_engine() -> AsyncEngine:
     if not settings.database_url:
         raise ValueError("DATABASE_URL environment variable is not configured.")
     normalized_url = normalize_database_url(settings.database_url)
-    return create_async_engine(normalized_url, pool_pre_ping=True)
+    connect_args: dict[str, object] = {}
+    if "pooler.supabase.com" in normalized_url or "supabase.co" in normalized_url:
+        connect_args["statement_cache_size"] = 0
+        connect_args["prepared_statement_cache_size"] = 0
+    return create_async_engine(
+        normalized_url,
+        pool_pre_ping=True,
+        connect_args=connect_args,
+    )
 
 
 @lru_cache
