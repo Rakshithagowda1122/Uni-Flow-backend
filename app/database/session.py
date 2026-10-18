@@ -29,9 +29,13 @@ def normalize_database_url(url: str) -> str:
     if match:
         ref = match.group(1)
         pooler_region = "ap-northeast-1"
-        pooler_host = f"aws-0-{pooler_region}.pooler.supabase.com:6543"
+        pooler_host = f"aws-0-{pooler_region}.pooler.supabase.com:5432"
         raw = re.sub(r"@db\.[a-z0-9]+\.supabase\.co(?::\d+)?", f"@{pooler_host}", raw)
         raw = re.sub(r"(://)postgres(?!\.[a-z0-9]+)(:)", rf"\1postgres.{ref}\2", raw)
+
+    # Automatically map Supabase transaction pooler port 6543 to session pooler port 5432
+    # Port 5432 provides full session state for asyncpg prepared statements and set_config
+    raw = re.sub(r"(\.pooler\.supabase\.com):6543", r"\1:5432", raw)
 
     if raw.startswith("postgres://"):
         raw = "postgresql+asyncpg://" + raw[len("postgres://"):]

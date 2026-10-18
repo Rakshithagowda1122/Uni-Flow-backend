@@ -147,6 +147,6 @@ async def health():
             content={
                 "status": "degraded",
                 "database": "disconnected",
-                "detail": f"Database check failed: {type(exc).__name__}",
+                "detail": f"Database check failed: {type(exc).__name__}: {exc}",
             },
         )
