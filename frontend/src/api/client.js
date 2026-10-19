@@ -1,5 +1,9 @@
 function getApiBaseUrl() {
-  const envUrl = (import.meta.env.VITE_API_BASE_URL || "").trim().replace(/\/+$/, "");
+  const envUrl = (
+    import.meta.env.VITE_API_BASE_URL ||
+    import.meta.env.NEXT_PUBLIC_API_URL ||
+    ""
+  ).trim().replace(/\/+$/, "");
   if (envUrl) {
     return envUrl.endsWith("/api/v1") ? envUrl : `${envUrl}/api/v1`;
   }

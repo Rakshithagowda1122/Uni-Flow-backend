@@ -36,6 +36,7 @@ export default async function handler(request, response) {
   }
 
   const rawBackendOrigin =
+    process.env.NEXT_PUBLIC_API_URL ||
     process.env.API_BASE_URL ||
     process.env.VITE_API_BASE_URL ||
     "https://uni-flow-backend.onrender.com";
