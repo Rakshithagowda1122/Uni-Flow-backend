@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     database_url: str = Field(
-        default="",
+        default="postgresql://postgres.lmhnrjtawwuomsazecso:rakshu28082006@aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres",
         validation_alias=AliasChoices(
             "DATABASE_URL",
             "database_url",
@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     )
     environment: str = "development"
     token_expiry_minutes: int = Field(default=60, gt=0, le=1440)
-    frontend_origins: str = "http://localhost:3000,http://127.0.0.1:3000,https://uni-flow-frontend-nine.vercel.app"
+    frontend_origins: str = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,https://uni-flow-frontend-nine.vercel.app,https://uni-flow-backend.onrender.com"
 
     model_config = SettingsConfigDict(
         env_file=".env",

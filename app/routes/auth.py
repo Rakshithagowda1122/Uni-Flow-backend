@@ -1,5 +1,5 @@
 import time
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
@@ -35,6 +35,7 @@ class LoginRequest(BaseModel):
 
 class LoginResponse(BaseModel):
     user: dict[str, str]
+    token: str | None = None
 
 
 CurrentPrincipal = Annotated[AuthenticatedPrincipal, Depends(get_current_principal)]
@@ -42,6 +43,11 @@ CurrentPrincipal = Annotated[AuthenticatedPrincipal, Depends(get_current_princip
 
 def _cookie_secure() -> bool:
     return get_settings().environment.lower() not in {"development", "test"}
+
+
+def _cookie_samesite() -> Literal["none", "lax"]:
+    # Production cross-site calls (e.g. Vercel -> Render) require SameSite=None + Secure=True
+    return "none" if _cookie_secure() else "lax"
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -98,7 +104,7 @@ async def login(payload: LoginRequest, response: Response) -> LoginResponse:
                     max_age=max(0, expires_at - int(time.time())),
                     httponly=True,
                     secure=_cookie_secure(),
-                    samesite="lax",
+                    samesite=_cookie_samesite(),
                     path="/",
                 )
                 return LoginResponse(
@@ -110,6 +116,7 @@ async def login(payload: LoginRequest, response: Response) -> LoginResponse:
                         "college_name": college.name,
                         "college_slug": college.slug,
                     },
+                    token=access_token,
                 )
     except HTTPException:
         raise
@@ -164,6 +171,6 @@ async def logout(
         path="/",
         secure=_cookie_secure(),
         httponly=True,
-        samesite="lax",
+        samesite=_cookie_samesite(),
     )
     return {"message": "Signed out."}

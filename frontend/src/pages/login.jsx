@@ -104,7 +104,9 @@ export default function Login() {
         );
       }
 
-      localStorage.removeItem("token");
+      if (data?.token) {
+        localStorage.setItem("token", data.token);
+      }
       localStorage.setItem("user", JSON.stringify(data.user));
 
       setScanStepText("ACCESS GRANTED. INITIALIZING PORTAL...");

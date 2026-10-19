@@ -1,15 +1,12 @@
-const API_BASE_URL = (
-  import.meta.env.PROD
-    ? "/api/v1"
-    : import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api/v1"
-).replace(/\/+$/, "");
-const apiBaseUrl = new URL(API_BASE_URL, "http://localhost");
-
-if (apiBaseUrl.port === "3000") {
-  throw new Error(
-    "VITE_API_BASE_URL must point to the FastAPI backend, not the frontend on port 3000.",
-  );
+function getApiBaseUrl() {
+  const envUrl = (import.meta.env.VITE_API_BASE_URL || "").trim().replace(/\/+$/, "");
+  if (envUrl) {
+    return envUrl.endsWith("/api/v1") ? envUrl : `${envUrl}/api/v1`;
+  }
+  return import.meta.env.PROD ? "/api/v1" : "http://localhost:8000/api/v1";
 }
+
+const API_BASE_URL = getApiBaseUrl();
 
 export function clearClientSession() {
   if (typeof window === "undefined") return;
@@ -43,12 +40,15 @@ export async function checkApiHealth() {
 }
 
 export async function apiRequest(endpoint, options = {}) {
+  const headers = new Headers(options.headers || {});
+
   if (typeof window !== "undefined") {
-    window.localStorage.removeItem("token");
+    const token = window.localStorage.getItem("token");
+    if (token && !headers.has("Authorization")) {
+      headers.set("Authorization", `Bearer ${token}`);
+    }
   }
 
-  const headers = new Headers(options.headers || {});
-  headers.delete("Authorization");
   if (!headers.has("Content-Type") && options.body) {
     headers.set("Content-Type", "application/json");
   }

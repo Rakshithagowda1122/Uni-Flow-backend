@@ -7,12 +7,12 @@ services:
     healthCheckPath: /health
     envVars:
       - key: DATABASE_URL
-        sync: false
+        value: postgresql://postgres.lmhnrjtawwuomsazecso:rakshu28082006@aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres
       - key: TOKEN_SECRET
         generateValue: true
       - key: ENVIRONMENT
         value: production
       - key: FRONTEND_ORIGINS
-        value: https://uni-flow-frontend-nine.vercel.app
+        value: https://uni-flow-frontend-nine.vercel.app,http://localhost:3000,https://uni-flow-backend.onrender.com
       - key: SEED_PASSWORD
-        sync: false
+        value: "10111980"

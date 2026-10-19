@@ -102,10 +102,14 @@ def decode_access_token(token: str) -> AuthenticatedPrincipal:
 async def principal_from_request(request: Request) -> AuthenticatedPrincipal:
     token = request.cookies.get(SESSION_COOKIE_NAME)
     if not token:
+        auth_header = request.headers.get("authorization") or request.headers.get("Authorization")
+        if auth_header and auth_header.lower().startswith("bearer "):
+            token = auth_header[7:].strip()
+    if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication is required.",
-            headers={"WWW-Authenticate": "Session"},
+            headers={"WWW-Authenticate": "Bearer"},
         )
     principal = decode_access_token(token)
     session_factory = get_session_factory()

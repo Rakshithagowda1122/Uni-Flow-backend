@@ -122,10 +122,6 @@ function ProtectedPortal({ role, children }) {
 }
 
 export default function App() {
-  useEffect(() => {
-    localStorage.removeItem("token");
-  }, []);
-
   return (
     <BrowserRouter>
       <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">

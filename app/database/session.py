@@ -37,6 +37,16 @@ def normalize_database_url(url: str) -> str:
     # Port 5432 provides full session state for asyncpg prepared statements and set_config
     raw = re.sub(r"(\.pooler\.supabase\.com):6543", r"\1:5432", raw)
 
+    # Ensure Supabase pooler username has the tenant project ref (e.g. postgres.lmhnrjtawwuomsazecso)
+    # Required by Supavisor to prevent (ENOIDENTIFIER) no tenant identifier provided error
+    if "pooler.supabase.com" in raw:
+        supabase_project_ref = "lmhnrjtawwuomsazecso"
+        raw = re.sub(
+            r"(://)postgres(?!\.[a-zA-Z0-9_\-]+)(:)",
+            rf"\1postgres.{supabase_project_ref}\2",
+            raw,
+        )
+
     if raw.startswith("postgres://"):
         raw = "postgresql+asyncpg://" + raw[len("postgres://"):]
     elif raw.startswith("postgresql://"):
@@ -67,9 +77,14 @@ def get_engine() -> AsyncEngine:
     if "pooler.supabase.com" in normalized_url or "supabase.co" in normalized_url:
         connect_args["statement_cache_size"] = 0
         connect_args["prepared_statement_cache_size"] = 0
+        connect_args["command_timeout"] = 60
     return create_async_engine(
         normalized_url,
         pool_pre_ping=True,
+        pool_size=10,
+        max_overflow=20,
+        pool_recycle=300,
+        pool_timeout=30,
         connect_args=connect_args,
     )
 
