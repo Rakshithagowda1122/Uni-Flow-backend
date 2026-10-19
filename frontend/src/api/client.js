@@ -95,11 +95,16 @@ export async function apiRequest(endpoint, options = {}) {
 
   if (!response.ok) {
     const detail = result?.detail;
-    const message =
-      typeof detail === "string"
-        ? detail
-        : detail?.message ||
-          `API request failed with status ${response.status}.`;
+    let message;
+    if (typeof detail === "string") {
+      message = detail;
+    } else if (Array.isArray(detail)) {
+      message = detail.map((err) => err.msg || JSON.stringify(err)).join(", ");
+    } else if (detail?.message) {
+      message = detail.message;
+    } else {
+      message = `API request failed with status ${response.status}.`;
+    }
     const error = new Error(message);
     error.status = response.status;
     throw error;

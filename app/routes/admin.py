@@ -3,7 +3,7 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import case, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -68,9 +68,25 @@ class ClassMeetingsReplace(BaseModel):
 class CampusUserUpdate(BaseModel):
     name: str = Field(min_length=1, max_length=150)
     status: Literal["active", "inactive", "suspended"]
-    department_id: UUID | None
+    department_id: UUID | None = None
 
     model_config = ConfigDict(extra="forbid")
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def normalize_status(cls, v: object) -> str:
+        if isinstance(v, str):
+            val = v.strip().lower()
+            if val in {"active", "inactive", "suspended"}:
+                return val
+        return v
+
+    @field_validator("department_id", mode="before")
+    @classmethod
+    def normalize_department_id(cls, v: object) -> object:
+        if v is None or v == "" or v == "none" or v == "null":
+            return None
+        return v
 
 
 class NoticeUpdate(BaseModel):
@@ -86,6 +102,15 @@ class AttendanceStatusUpdate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    @field_validator("status", mode="before")
+    @classmethod
+    def normalize_status(cls, v: object) -> str:
+        if isinstance(v, str):
+            val = v.strip().lower()
+            if val in {"present", "absent", "late", "excused"}:
+                return val
+        return v
+
 
 class ClassDetailsUpdate(BaseModel):
     term: str = Field(min_length=1, max_length=32)
@@ -95,6 +120,13 @@ class ClassDetailsUpdate(BaseModel):
     meetings: list[ClassMeetingInput] = Field(max_length=14)
 
     model_config = ConfigDict(extra="forbid")
+
+    @field_validator("room", mode="before")
+    @classmethod
+    def normalize_room(cls, v: object) -> object:
+        if v is None or v == "" or v == "none" or v == "null":
+            return None
+        return v
 
 
 class CampusUpdate(BaseModel):

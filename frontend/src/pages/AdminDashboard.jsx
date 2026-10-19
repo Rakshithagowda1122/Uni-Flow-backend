@@ -251,12 +251,19 @@ export default function AdminDashboard() {
     setSavingUserId(editingUser.id);
     setErrorMessage("");
     try {
+      const rawDept = editingUser.department_id;
+      const department_id =
+        rawDept && typeof rawDept === "string" && rawDept.trim() && rawDept !== "none" && rawDept !== "null"
+          ? rawDept.trim()
+          : null;
+      const status = (editingUser.status || "active").toLowerCase().trim();
+
       const updated = await apiRequest(`/admin/users/${editingUser.id}`, {
         method: "PUT",
         body: JSON.stringify({
-          name: editingUser.name,
-          status: editingUser.status,
-          department_id: editingUser.department_id || null,
+          name: editingUser.name.trim(),
+          status,
+          department_id,
         }),
       });
       setUsers((current) => current.map((user) => user.id === updated.id ? updated : user));
@@ -270,7 +277,8 @@ export default function AdminDashboard() {
   };
 
   const saveAttendanceStatus = async (record) => {
-    const status = attendanceDrafts[record.id] || record.status;
+    const rawStatus = attendanceDrafts[record.id] || record.status;
+    const status = (rawStatus || "present").toLowerCase().trim();
     setSavingAttendanceId(record.id);
     setErrorMessage("");
     try {
@@ -643,7 +651,7 @@ export default function AdminDashboard() {
                         onClick={() => setEditingUser({
                           id: user.id,
                           name: user.name,
-                          status: user.status,
+                          status: (user.status || "active").toLowerCase(),
                           department_id: user.department_id || "",
                         })}
                         className="inline-flex items-center gap-1 rounded-lg border border-slate-700 px-2 py-1 text-[10px] text-slate-200 hover:border-indigo-500"
