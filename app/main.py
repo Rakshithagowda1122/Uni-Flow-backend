@@ -79,17 +79,28 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="UniFlow API", version="1.0.0", lifespan=lifespan)
-allowed_origins = [
+
+# Explicitly configure live Vercel production origin, removing localhost and avoiding wildcard *
+VERCEL_PRODUCTION_URL = "https://uni-flow-frontend-nine.vercel.app"
+raw_origins = [
     origin.strip()
     for origin in get_settings().frontend_origins.split(",")
     if origin.strip()
 ]
+allowed_origins = [
+    origin
+    for origin in raw_origins
+    if "localhost" not in origin and "127.0.0.1" not in origin and origin != "*"
+]
+if VERCEL_PRODUCTION_URL not in allowed_origins:
+    allowed_origins.append(VERCEL_PRODUCTION_URL)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"^https://.*\.vercel\.app$|^https://.*\.onrender\.com$|^http://localhost(:\d+)?$|^http://127\.0\.0\.1(:\d+)?$",
     allow_origins=allowed_origins,
+    allow_origin_regex=r"^https://[a-zA-Z0-9_\-]+\.vercel\.app$",
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
     allow_headers=["*"],
 )
 app.include_router(api_router)
@@ -98,15 +109,11 @@ app.include_router(api_router)
 def _is_origin_permitted(origin: str | None) -> bool:
     if not origin:
         return True
-    if origin in allowed_origins or "*" in allowed_origins:
+    if origin in allowed_origins:
         return True
     try:
         hostname = urlparse(origin).hostname or ""
-        if (
-            hostname.endswith(".vercel.app")
-            or hostname.endswith(".onrender.com")
-            or hostname in {"localhost", "127.0.0.1"}
-        ):
+        if hostname.endswith(".vercel.app") or hostname.endswith(".onrender.com"):
             return True
     except Exception:
         pass

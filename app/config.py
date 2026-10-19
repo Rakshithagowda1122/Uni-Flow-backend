@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     )
     environment: str = "development"
     token_expiry_minutes: int = Field(default=60, gt=0, le=1440)
-    frontend_origins: str = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,https://uni-flow-frontend-nine.vercel.app,https://uni-flow-backend.onrender.com"
+    frontend_origins: str = "https://uni-flow-frontend-nine.vercel.app,https://uni-flow-backend.onrender.com"
 
     model_config = SettingsConfigDict(
         env_file=".env",

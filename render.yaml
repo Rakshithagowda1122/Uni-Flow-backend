@@ -13,6 +13,6 @@ services:
       - key: ENVIRONMENT
         value: production
       - key: FRONTEND_ORIGINS
-        value: https://uni-flow-frontend-nine.vercel.app,http://localhost:3000,https://uni-flow-backend.onrender.com
+        value: https://uni-flow-frontend-nine.vercel.app,https://uni-flow-backend.onrender.com
       - key: SEED_PASSWORD
         value: "10111980"
